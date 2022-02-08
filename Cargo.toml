@@ -11,5 +11,5 @@ atty = { version = "0.2.14", optional = true }
 [features]
 default = ["pretty"]
 
-# Prettier output
+# Prettier bin output
 pretty = ["atty"]
