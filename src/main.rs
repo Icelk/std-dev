@@ -123,8 +123,22 @@ fn main() {
         }
 
         println!(
-            "Standard deviation: {}, mean: {}, median: {}, lower quadrille: {:?}, higher quadrille: {:?}",
-            mean.standard_deviation, mean.mean, median.median, median.lower_quadrille, median.higher_quadrille,
+            "Standard deviation: {}, mean: {}, median: {}{}{}",
+            mean.standard_deviation,
+            mean.mean,
+            median.median,
+            median
+                .lower_quadrille
+                .as_ref()
+                .map_or("".into(), |quadrille| {
+                    format!(", lower quadrille: {}", *quadrille)
+                }),
+            median
+                .higher_quadrille
+                .as_ref()
+                .map_or("".into(), |quadrille| {
+                    format!(", upper quadrille: {}", *quadrille)
+                }),
         );
     }
 }
