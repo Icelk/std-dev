@@ -1,5 +1,10 @@
+use std::collections::HashMap;
+use std::hash;
+use std::ops::{Deref, DerefMut};
+
+pub type Cluster = (f64, usize);
 pub struct OwnedClusterList {
-    list: Vec<(f64, usize)>,
+    list: Vec<Cluster>,
     len: usize,
 }
 impl OwnedClusterList {
@@ -10,22 +15,33 @@ impl OwnedClusterList {
         }
     }
 }
+impl Deref for OwnedClusterList {
+    type Target = [Cluster];
+    fn deref(&self) -> &Self::Target {
+        &self.list
+    }
+}
+impl DerefMut for OwnedClusterList {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.list
+    }
+}
 
 /// A list of clusters.
 ///
 /// A cluster is a value and the count.
 pub struct ClusterList<'a> {
-    list: &'a [(f64, usize)],
+    list: &'a [Cluster],
     len: usize,
 }
 impl<'a> ClusterList<'a> {
     /// The float is the value. The integer is the count.
-    pub fn new(list: &'a [(f64, usize)]) -> Self {
+    pub fn new(list: &'a [Cluster]) -> Self {
         let len = Self::size(list);
         Self { list, len }
     }
 
-    fn size(list: &[(f64, usize)]) -> usize {
+    fn size(list: &[Cluster]) -> usize {
         list.iter().map(|(_, count)| *count).sum()
     }
 
@@ -102,6 +118,50 @@ impl<'a> ClusterList<'a> {
         }
         debug_assert_eq!(len, Self::size(&list));
         OwnedClusterList { list, len }
+    }
+
+    /// Groups [`Cluster`]s with the same value together, by adding their count.
+    ///
+    /// This speeds up calculations enormously.
+    ///
+    /// O(n)
+    pub fn optimize_values(self) -> OwnedClusterList {
+        #[derive(Debug, Copy, Clone)]
+        struct F64Hash(f64);
+
+        impl F64Hash {
+            fn key(&self) -> u64 {
+                self.0.to_bits()
+            }
+        }
+
+        impl hash::Hash for F64Hash {
+            fn hash<H>(&self, state: &mut H)
+            where
+                H: hash::Hasher,
+            {
+                self.key().hash(state)
+            }
+        }
+
+        impl PartialEq for F64Hash {
+            fn eq(&self, other: &F64Hash) -> bool {
+                self.key() == other.key()
+            }
+        }
+
+        impl Eq for F64Hash {}
+
+        let mut collected = HashMap::with_capacity(16);
+        for (v, count) in self.list {
+            let c = collected.entry(F64Hash(*v)).or_insert(0);
+            *c += count;
+        }
+        let list = collected.into_iter().map(|(f, c)| (f.0, c)).collect();
+        OwnedClusterList {
+            list,
+            len: self.len,
+        }
     }
 }
 

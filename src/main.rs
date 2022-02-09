@@ -1,9 +1,8 @@
-use std::collections::HashMap;
+use std::env;
 use std::io::{stdin, stdout, BufRead, Write};
 use std::process::exit;
 use std::str::FromStr;
 use std::time::Instant;
-use std::{env, hash};
 
 pub mod lib;
 
@@ -19,32 +18,6 @@ fn parse<T: FromStr>(s: &str) -> Option<T> {
         None
     }
 }
-
-#[derive(Debug, Copy, Clone)]
-struct F64Hash(f64);
-
-impl F64Hash {
-    fn key(&self) -> u64 {
-        self.0.to_bits()
-    }
-}
-
-impl hash::Hash for F64Hash {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: hash::Hasher,
-    {
-        self.key().hash(state)
-    }
-}
-
-impl PartialEq for F64Hash {
-    fn eq(&self, other: &F64Hash) -> bool {
-        self.key() == other.key()
-    }
-}
-
-impl Eq for F64Hash {}
 
 fn main() {
     let performance_print = env::var("DEBUG_PERFORMANCE")
@@ -87,24 +60,21 @@ fn main() {
             continue;
         }
 
+        let values = lib::ClusterList::new(&values);
+
         if performance_print {
             println!("Parsing took {}µs", now.elapsed().as_micros());
         }
         let now = Instant::now();
 
-        let mut collected = HashMap::with_capacity(16);
-        for (v, count) in &values {
-            let c = collected.entry(F64Hash(*v)).or_insert(0);
-            *c += count;
-        }
-        let mut values: Vec<_> = collected.into_iter().map(|(f, c)| (f.0, c)).collect();
+        let mut values = values.optimize_values();
 
         if performance_print {
             println!("Optimizing input took {}µs", now.elapsed().as_micros());
         }
         let now = Instant::now();
 
-        let mean = lib::std_dev(lib::ClusterList::new(&values));
+        let mean = lib::std_dev(values.borrow());
 
         if performance_print {
             println!(
@@ -114,6 +84,7 @@ fn main() {
         }
         let now = Instant::now();
 
+        // Sort of clusters required.
         values.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
         let median = lib::median(lib::ClusterList::new(&values));
