@@ -1,18 +1,37 @@
+pub struct OwnedClusterList {
+    list: Vec<(f64, usize)>,
+    len: usize,
+}
+impl OwnedClusterList {
+    pub fn borrow(&self) -> ClusterList {
+        ClusterList {
+            list: &self.list,
+            len: self.len,
+        }
+    }
+}
+
 /// A list of clusters.
 ///
 /// A cluster is a value and the count.
 pub struct ClusterList<'a> {
     list: &'a [(f64, usize)],
+    len: usize,
 }
 impl<'a> ClusterList<'a> {
     /// The float is the value. The integer is the count.
     pub fn new(list: &'a [(f64, usize)]) -> Self {
-        Self { list }
+        let len = Self::size(list);
+        Self { list, len }
     }
 
-    /// O(n)
+    fn size(list: &[(f64, usize)]) -> usize {
+        list.iter().map(|(_, count)| *count).sum()
+    }
+
+    /// O(1)
     pub fn len(&self) -> usize {
-        self.list.iter().map(|(_, count)| *count).sum()
+        self.len
     }
     /// O(1)
     pub fn is_empty(&self) -> bool {
@@ -52,7 +71,7 @@ impl<'a> ClusterList<'a> {
         0.0
     }
     /// Can be used in [`Self::new`].
-    pub fn split_start(&self, len: usize) -> Vec<(f64, usize)> {
+    pub fn split_start(&self, len: usize) -> OwnedClusterList {
         let mut sum = 0;
         let mut list = Vec::new();
         for (v, count) in self.list {
@@ -64,10 +83,11 @@ impl<'a> ClusterList<'a> {
                 list.push((*v, *count));
             }
         }
-        list
+        debug_assert_eq!(len, Self::size(&list));
+        OwnedClusterList { list, len }
     }
     /// Can be used in [`Self::new`].
-    pub fn split_end(&self, len: usize) -> Vec<(f64, usize)> {
+    pub fn split_end(&self, len: usize) -> OwnedClusterList {
         let len = self.len() - len;
         let mut sum = self.len();
         let mut list = Vec::new();
@@ -80,7 +100,8 @@ impl<'a> ClusterList<'a> {
                 list.insert(0, (*v, *count))
             }
         }
-        list
+        debug_assert_eq!(len, Self::size(&list));
+        OwnedClusterList { list, len }
     }
 }
 
@@ -107,9 +128,9 @@ pub fn std_dev(values: ClusterList) -> MeanOutput {
 }
 pub fn median(values: ClusterList) -> MedianOutput {
     let lower_half = values.split_start(values.len() / 2);
-    let lower_half = ClusterList::new(&lower_half);
+    let lower_half = lower_half.borrow();
     let upper_half = values.split_end(values.len() / 2);
-    let upper_half = ClusterList::new(&upper_half);
+    let upper_half = upper_half.borrow();
     MedianOutput {
         median: values.median(),
         lower_quadrille: if lower_half.len() > 1 {
