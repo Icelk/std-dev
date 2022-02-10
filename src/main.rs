@@ -1,14 +1,10 @@
 use std::env;
-use std::io::{stdin, stdout, BufRead, Write};
+use std::io::{stdin, BufRead};
 use std::process::exit;
 use std::str::FromStr;
 use std::time::Instant;
 
 pub mod lib;
-
-fn f() {
-    stdout().lock().flush().unwrap();
-}
 
 fn parse<T: FromStr>(s: &str) -> Option<T> {
     if let Ok(v) = s.parse() {
@@ -24,12 +20,16 @@ fn main() {
         .ok()
         .map_or(false, |s| !s.trim().is_empty());
 
+    #[cfg(feature = "prettier")]
     let tty = atty::is(atty::Stream::Stdin);
 
     loop {
+        #[cfg(feature = "prettier")]
         if tty {
+            use std::io::{stdout, Write};
+
             print!("> ");
-            f();
+            stdout().lock().flush().unwrap();
         }
         let mut s = String::new();
 
