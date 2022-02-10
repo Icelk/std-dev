@@ -104,12 +104,11 @@ impl<'a> ClusterList<'a> {
     }
     /// Can be used in [`Self::new`].
     pub fn split_end(&self, len: usize) -> OwnedClusterList {
-        let len = self.len() - len;
-        let mut sum = self.len();
+        let mut sum = 0;
         let mut list = Vec::new();
         for (v, count) in self.list.iter().rev() {
-            sum -= count;
-            if sum <= len {
+            sum += count;
+            if sum >= len {
                 list.insert(0, (*v, *count - (len - sum)));
                 break;
             } else {
