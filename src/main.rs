@@ -20,11 +20,11 @@ fn main() {
         .ok()
         .map_or(false, |s| !s.trim().is_empty());
 
-    #[cfg(feature = "prettier")]
+    #[cfg(feature = "pretty")]
     let tty = atty::is(atty::Stream::Stdin);
 
     loop {
-        #[cfg(feature = "prettier")]
+        #[cfg(feature = "pretty")]
         if tty {
             use std::io::{stdout, Write};
 
