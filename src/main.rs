@@ -58,7 +58,11 @@ fn input(_is_tty: bool, debug_performance: bool, multiline: bool) -> Option<Inpu
                 break;
             }
             let mut current = Vec::with_capacity(2);
-            for segment in line.split(',') {
+            for segment in line
+                .split(',')
+                .map(|s| s.trim().split_whitespace())
+                .flatten()
+            {
                 let f = parse(segment.trim());
                 if let Some(f) = f {
                     current.push(f)
@@ -113,18 +117,38 @@ fn input(_is_tty: bool, debug_performance: bool, multiline: bool) -> Option<Inpu
 }
 
 fn main() {
-    let app = clap::app_from_crate!();
+    let mut app = clap::app_from_crate!();
 
-    let app = app
+    app = app
         .arg(Arg::new("debug-performance").short('p').long("debug-performance"))
         .arg(Arg::new("multiline")
-            .short('l')
+            .short('m')
             .long("multiline")
             .help("Accept multiple lines as one input. Two consecutive newlines is treated as the series separator. When not doing regression analysis the second 'column' is the count of the first. Acts more like CSV.")
-        )
-        .subcommand(clap::App::new("regression")
-            .about("Find a equation which describes the input data. Tries to automatically determine the process.")
         );
+
+    #[cfg(feature = "regression")]
+    {
+        app = app.subcommand(clap::App::new("regression")
+            .about("Find a equation which describes the input data. Tries to automatically determine the process if no arguments specifying it are provided.")
+            .group(clap::ArgGroup::new("process")
+                   .arg("order")
+                   .arg("linear")
+            )
+            .arg(Arg::new("order")
+                .short('o')
+                .long("order")
+                .help("Order of polynomial.")
+                .takes_value(true)
+                .validator(|o| o.parse::<usize>().map_err(|_| "Order must be an integer".to_owned()))
+            )
+            .arg(Arg::new("linear")
+                 .short('l')
+                 .long("linear")
+                 .help("Tries to fit a line to the provided data.")
+            )
+        );
+    }
 
     let matches = app.get_matches();
 
@@ -139,76 +163,127 @@ fn main() {
     let tty = false;
 
     'main: loop {
-        let input = if let Some(i) = input(tty, debug_performance, matches.is_present("multiline"))
-        {
+        let multiline = {
+            matches.is_present("multiline") || matches.subcommand_matches("regression").is_some()
+        };
+        let input = if let Some(i) = input(tty, debug_performance, multiline) {
             i
         } else {
             continue;
         };
 
-        let values = {
-            match input {
-                InputValue::Count(count) => lib::OwnedClusterList::new(count),
-                InputValue::List(list) => {
-                    let mut count = Vec::with_capacity(list.len());
-                    for item in list {
-                        if item.len() != 1 && item.len() != 2 {
-                            eprintln!("Expected one or two values per line.");
+        match matches.subcommand() {
+            #[cfg(feature = "regression")]
+            Some(("regression", config)) => {
+                let order = {
+                    if let Ok(order) = config.value_of_t("order") {
+                        order
+                    } else {
+                        1
+                    }
+                };
+                let values = {
+                    match input {
+                        InputValue::Count(_) => {
+                            eprintln!("You cannot use `<value>x<count>` notation for point entry");
                             continue 'main;
                         }
-                        let first = item[0];
-                        let second = item.get(1).map_or(1, |f| f.round() as usize);
-                        count.push((first, second))
+                        InputValue::List(list) => {
+                            // Higher dimensional analysis?:
+                            // let dimension = list.first().unwrap().len();
+                            let dimension = 2;
+
+                            for item in &list {
+                                if item.len() != dimension {
+                                    eprintln!("Expected {dimension} values per line.");
+                                    continue 'main;
+                                }
+                            }
+                            list
+                        }
                     }
-                    lib::OwnedClusterList::new(count)
+                };
+
+                let len = values.len();
+                let x = values.iter().map(|d| d[0]);
+                let y = values.iter().map(|d| d[1]);
+
+                if order + 1 > len {
+                    eprintln!("Order of polynomial is too large; add more datapoints.");
+                    continue 'main;
                 }
+
+                let coefficients = std_dev::regression::linear_regression(x, y, len, order);
+
+                println!("Got equation: {coefficients}");
             }
-        };
-        let now = Instant::now();
+            Some(_) => unreachable!("invalid subcommand"),
+            None => {
+                let values = {
+                    match input {
+                        InputValue::Count(count) => lib::OwnedClusterList::new(count),
+                        InputValue::List(list) => {
+                            let mut count = Vec::with_capacity(list.len());
+                            for item in list {
+                                if item.len() != 1 && item.len() != 2 {
+                                    eprintln!("Expected one or two values per line.");
+                                    continue 'main;
+                                }
+                                let first = item[0];
+                                let second = item.get(1).map_or(1, |f| f.round() as usize);
+                                count.push((first, second))
+                            }
+                            lib::OwnedClusterList::new(count)
+                        }
+                    }
+                };
+                let now = Instant::now();
 
-        let mut values = values.borrow().optimize_values();
+                let mut values = values.borrow().optimize_values();
 
-        if debug_performance {
-            println!("Optimizing input took {}µs", now.elapsed().as_micros());
+                if debug_performance {
+                    println!("Optimizing input took {}µs", now.elapsed().as_micros());
+                }
+                let now = Instant::now();
+
+                let mean = lib::std_dev(values.borrow());
+
+                if debug_performance {
+                    println!(
+                        "Standard deviation & mean took {}µs",
+                        now.elapsed().as_micros()
+                    );
+                }
+                let now = Instant::now();
+
+                // Sort of clusters required.
+                values.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+                let median = lib::median(lib::ClusterList::new(&values));
+
+                if debug_performance {
+                    println!("Median & quadrilles took {}µs", now.elapsed().as_micros());
+                }
+
+                println!(
+                    "Standard deviation: {}, mean: {}, median: {}{}{}",
+                    mean.standard_deviation,
+                    mean.mean,
+                    median.median,
+                    median
+                        .lower_quadrille
+                        .as_ref()
+                        .map_or("".into(), |quadrille| {
+                            format!(", lower quadrille: {}", *quadrille)
+                        }),
+                    median
+                        .higher_quadrille
+                        .as_ref()
+                        .map_or("".into(), |quadrille| {
+                            format!(", upper quadrille: {}", *quadrille)
+                        }),
+                );
+            }
         }
-        let now = Instant::now();
-
-        let mean = lib::std_dev(values.borrow());
-
-        if debug_performance {
-            println!(
-                "Standard deviation & mean took {}µs",
-                now.elapsed().as_micros()
-            );
-        }
-        let now = Instant::now();
-
-        // Sort of clusters required.
-        values.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-
-        let median = lib::median(lib::ClusterList::new(&values));
-
-        if debug_performance {
-            println!("Median & quadrilles took {}µs", now.elapsed().as_micros());
-        }
-
-        println!(
-            "Standard deviation: {}, mean: {}, median: {}{}{}",
-            mean.standard_deviation,
-            mean.mean,
-            median.median,
-            median
-                .lower_quadrille
-                .as_ref()
-                .map_or("".into(), |quadrille| {
-                    format!(", lower quadrille: {}", *quadrille)
-                }),
-            median
-                .higher_quadrille
-                .as_ref()
-                .map_or("".into(), |quadrille| {
-                    format!(", upper quadrille: {}", *quadrille)
-                }),
-        );
     }
 }

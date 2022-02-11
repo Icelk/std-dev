@@ -2,6 +2,10 @@ use std::collections::HashMap;
 use std::hash;
 use std::ops::{Deref, DerefMut};
 
+#[cfg(feature = "regression")]
+#[path ="regression.rs"]
+pub mod regression;
+
 pub type Cluster = (f64, usize);
 #[derive(Debug)]
 pub struct OwnedClusterList {
