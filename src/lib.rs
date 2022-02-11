@@ -71,16 +71,17 @@ impl<'a> ClusterList<'a> {
     pub fn median(&self) -> f64 {
         let len = self.len();
         let even = len % 2 == 0;
-        let mut len = len;
         let target = len / 2;
+        let mut len = len;
 
         for (pos, (v, count)) in self.list.iter().enumerate() {
             len -= *count;
-            if len + 1 == target && even {
-                let mean = (*v + self.list[pos - 1].0) / 2.0;
+            if len <= target && even {
+                let overstep = target - len;
+                let mean = (*v + self.list[pos + if overstep == 0 { 1 } else { 0 }].0) / 2.0;
                 return mean;
             }
-            if len < target || len == target && !even {
+            if len <= target && !even {
                 return *v;
             }
         }
