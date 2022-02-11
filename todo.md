@@ -1,2 +1,3 @@
 -   [ ] Automatically choose process
 -   [ ] Linearization - solve all other.
+-   [ ] Fix input handling (arrow up, sides, don't spam prompt when pasting (or don't have prompt on multiline?))
