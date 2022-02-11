@@ -3,11 +3,17 @@ use std::hash;
 use std::ops::{Deref, DerefMut};
 
 pub type Cluster = (f64, usize);
+#[derive(Debug)]
 pub struct OwnedClusterList {
     list: Vec<Cluster>,
     len: usize,
 }
 impl OwnedClusterList {
+    /// The float is the value. The integer is the count.
+    pub fn new(list: Vec<Cluster>) -> Self {
+        let len = ClusterList::size(&list);
+        Self { list, len }
+    }
     pub fn borrow(&self) -> ClusterList {
         ClusterList {
             list: &self.list,
@@ -30,6 +36,7 @@ impl DerefMut for OwnedClusterList {
 /// A list of clusters.
 ///
 /// A cluster is a value and the count.
+#[derive(Debug)]
 pub struct ClusterList<'a> {
     list: &'a [Cluster],
     len: usize,

@@ -5,11 +5,31 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "std-dev"
+path = "src/main.rs"
+required-features = ["bin"]
+
 [dependencies]
 atty = { version = "0.2.14", optional = true }
+nalgebra = { version = "0.30", optional = true }
+clap = { version = "3", optional = true, features = ["cargo"] }
 
 [features]
-default = ["pretty"]
+default = ["bin", "pretty"]
+
+##
+# Library features (also applies to binary)
+##
+
+regression = ["nalgebra"]
+
+
+##
+# Binary features
+##
+
+bin = ["clap"]
 
 # Prettier bin output
-pretty = ["atty"]
+pretty = ["bin", "atty"]
