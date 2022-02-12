@@ -1,11 +1,11 @@
 use std::env;
+use std::fmt::Display;
 use std::io::{stdin, BufRead, Write};
 use std::process::exit;
 use std::str::FromStr;
 use std::time::Instant;
 
 use clap::Arg;
-use std_dev::regression::Predictive;
 
 pub mod lib;
 
@@ -128,6 +128,19 @@ fn input(
     Some(values)
 }
 
+#[cfg(feature = "regression")]
+fn print_regression(
+    regression: impl std_dev::regression::Predictive + Display,
+    x: impl Iterator<Item = f64>,
+    y: impl Iterator<Item = f64> + Clone,
+    len: usize,
+) {
+    println!(
+        "Determination: {}, Predicted equation: {regression}",
+        regression.error(x, y, len)
+    );
+}
+
 fn main() {
     let mut app = clap::app_from_crate!();
 
@@ -159,6 +172,17 @@ fn main() {
                  .long("linear")
                  .help("Tries to fit a line to the provided data.")
             )
+            .arg(Arg::new("power")
+                .short('p')
+                .long("power")
+                .help("Tries to fit a curve defined by the equation `a * x^b` to the data.")
+            )
+            .arg(Arg::new("exponential")
+                .short('e')
+                .long("exponential")
+                .long("growth")
+                .help("Tries to fit a curve defined by the equation `a * b^b` to the data.")
+            )
         );
     }
 
@@ -189,13 +213,6 @@ fn main() {
         match matches.subcommand() {
             #[cfg(feature = "regression")]
             Some(("regression", config)) => {
-                let order = {
-                    if let Ok(order) = config.value_of_t("order") {
-                        order
-                    } else {
-                        1
-                    }
-                };
                 let values = {
                     match input {
                         InputValue::Count(_) => {
@@ -222,18 +239,30 @@ fn main() {
                 let x = values.iter().map(|d| d[0]);
                 let y = values.iter().map(|d| d[1]);
 
-                if order + 1 > len {
-                    eprintln!("Order of polynomial is too large; add more datapoints.");
-                    continue 'main;
+                if config.is_present("power") {
+                    let coefficients = std_dev::regression::power(x.clone(), y.clone(), len);
+                    print_regression(coefficients, x, y, len);
+                } else if config.is_present("exponential") {
+                    let coefficients = std_dev::regression::exponential(x.clone(), y.clone(), len);
+                    print_regression(coefficients, x, y, len);
+                } else {
+                    let order = {
+                        if let Ok(order) = config.value_of_t("order") {
+                            order
+                        } else {
+                            1
+                        }
+                    };
+                    if order + 1 > len {
+                        eprintln!("Order of polynomial is too large; add more datapoints.");
+                        continue 'main;
+                    }
+
+                    let coefficients =
+                        std_dev::regression::linear(x.clone(), y.clone(), len, order);
+
+                    print_regression(coefficients, x, y, len);
                 }
-
-                let coefficients =
-                    std_dev::regression::linear_regression(x.clone(), y.clone(), len, order);
-
-                println!(
-                    "Determination: {}, Predicted equation: {coefficients}",
-                    coefficients.error(x, y, len)
-                );
             }
             Some(_) => unreachable!("invalid subcommand"),
             None => {
