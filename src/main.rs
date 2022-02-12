@@ -159,6 +159,8 @@ fn main() {
             .group(clap::ArgGroup::new("process")
                    .arg("order")
                    .arg("linear")
+                   .arg("power")
+                   .arg("exponential")
             )
             .arg(Arg::new("order")
                 .short('o')
