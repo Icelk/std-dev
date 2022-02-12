@@ -31,17 +31,25 @@ impl InputValue {
     }
 }
 
-fn input(_is_tty: bool, debug_performance: bool, multiline: bool) -> Option<InputValue> {
+fn input(
+    _is_tty: bool,
+    debug_performance: bool,
+    multiline: bool,
+    last_prompt: &mut Instant,
+) -> Option<InputValue> {
     #[cfg(feature = "pretty")]
-    if _is_tty {
-        use std::io::stdout;
+    {
+        if _is_tty {
+            use std::io::stdout;
 
-        if multiline {
-            print!("multiline > ");
-        } else {
-            print!("> ")
+            if multiline {
+                print!("multiline > ");
+            } else {
+                print!("> ")
+            }
+            stdout().lock().flush().unwrap();
         }
-        stdout().lock().flush().unwrap();
+        *last_prompt = Instant::now();
     }
     let mut s = String::new();
 
@@ -71,12 +79,15 @@ fn input(_is_tty: bool, debug_performance: bool, multiline: bool) -> Option<Inpu
             }
             values.push(current);
             #[cfg(feature = "pretty")]
-            if _is_tty {
-                use std::io::stdout;
+            {
+                if _is_tty && last_prompt.elapsed().as_millis() > 10 {
+                    use std::io::stdout;
 
-                let next = values.len() + 1;
-                print!("{next} > ");
-                stdout().lock().flush().unwrap();
+                    let next = values.len() + 1;
+                    print!("{next} > ");
+                    stdout().lock().flush().unwrap();
+                }
+                *last_prompt = Instant::now();
             }
         }
         if lines <= 1 {
@@ -163,11 +174,13 @@ fn main() {
     #[cfg(not(feature = "pretty"))]
     let tty = false;
 
+    let mut last_prompt = Instant::now();
+
     'main: loop {
         let multiline = {
             matches.is_present("multiline") || matches.subcommand_matches("regression").is_some()
         };
-        let input = if let Some(i) = input(tty, debug_performance, multiline) {
+        let input = if let Some(i) = input(tty, debug_performance, multiline, &mut last_prompt) {
             i
         } else {
             continue;
