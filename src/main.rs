@@ -5,6 +5,7 @@ use std::str::FromStr;
 use std::time::Instant;
 
 use clap::Arg;
+use std_dev::regression::Predictive;
 
 pub mod lib;
 
@@ -213,9 +214,13 @@ fn main() {
                     continue 'main;
                 }
 
-                let coefficients = std_dev::regression::linear_regression(x, y, len, order);
+                let coefficients =
+                    std_dev::regression::linear_regression(x.clone(), y.clone(), len, order);
 
-                println!("Got equation: {coefficients}");
+                println!(
+                    "Determination: {}, Predicted equation: {coefficients}",
+                    coefficients.error(x, y, len)
+                );
             }
             Some(_) => unreachable!("invalid subcommand"),
             None => {

@@ -1,5 +1,43 @@
 use std::fmt::{self, Display};
 
+pub trait Predictive {
+    /// Calculates the predicted outcome of `predictor`.
+    fn predict_outcome(&self, predictor: f64) -> f64;
+
+    /// Calculates the R² (coefficient of determination), the proportion of variation in predicted
+    /// model.
+    ///
+    /// `predictors` are the x values (input to the function).
+    /// `outcomes` are the observed dependant variable.
+    /// `len` is the count of data points.
+    ///
+    /// If `predictors` and `outcomes` have different lengths, the result might be unexpected.
+    ///
+    /// O(n)
+    // For implementation, see https://en.wikipedia.org/wiki/Coefficient_of_determination#Definitions
+    fn error(
+        &self,
+        predictors: impl Iterator<Item = f64>,
+        outcomes: impl Iterator<Item = f64> + Clone,
+        len: usize,
+    ) -> f64 {
+        let outcomes_mean = outcomes.clone().sum::<f64>() / len as f64;
+        let residuals = predictors
+            .zip(outcomes.clone())
+            .map(|(pred, out)| out - self.predict_outcome(pred));
+        // Sum of the square of the residuals
+        let res: f64 = residuals.map(|residual| residual * residual).sum();
+        let tot: f64 = outcomes
+            .map(|out| {
+                let diff = out - outcomes_mean;
+                diff * diff
+            })
+            .sum();
+
+        1.0 - (res / tot)
+    }
+}
+
 /// The length of the inner vector is `order + 1`.
 ///
 /// The inner list is in order of smallest exponent to largest: `[0, 2, 1]` means `y = 1x² + 2x + 0`.
@@ -28,6 +66,16 @@ impl Display for PolynomialCoefficients {
             first = false;
         }
         Ok(())
+    }
+}
+
+impl Predictive for PolynomialCoefficients {
+    fn predict_outcome(&self, predictor: f64) -> f64 {
+        let mut out = 0.0;
+        for (order, coefficient) in self.coefficients.iter().copied().enumerate() {
+            out += predictor.powi(order as i32) * coefficient;
+        }
+        out
     }
 }
 
