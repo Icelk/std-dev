@@ -34,7 +34,7 @@
 //! 
 //! lg(y) = lg(b * a^x)
 //! lg(y) = lg(b) + x(lg a)
-//! 
+//!
 //! Transform: y => lg (y), x => x
 //! 
 //! When values found, take 10^b to get b and 10^a to get a
@@ -109,7 +109,7 @@ impl Display for PolynomialCoefficients {
             match order {
                 0 => write!(f, "{coefficient}")?,
                 1 => write!(f, "{coefficient}x")?,
-                _ => write!(f, "{coefficient}x^{order}")?,
+                _ => write!(f, "{coefficient}x^({order})")?,
             }
 
             first = false;
@@ -177,14 +177,15 @@ impl Display for PowerCoefficients {
     }
 }
 
-/// Fits a curve with the equation `y = a * x^b`.
+/// Fits a curve with the equation `y = a * x^b` (optionally with an additional subtractive term if
+/// any input is negative).
 ///
 /// # Panics
 ///
 /// Panics if either `x` or `y` don't have the length `len`.
 pub fn power(
     x: impl Iterator<Item = f64>,
-    y: impl Iterator<Item = f64>,
+    y: impl Iterator<Item = f64> + Clone,
     len: usize,
 ) -> PowerCoefficients {
     let x = x.map(|x| x.log2());
@@ -214,18 +215,23 @@ impl Display for ExponentialCoefficients {
     }
 }
 
-/// Fits a curve with the equation `y = a * b^x`.
+/// Fits a curve with the equation `y = a * b^x` (optionally with an additional subtractive term if
+/// any input is negative).
 ///
 /// Also sometimes called "growth".
 ///
 /// # Panics
 ///
 /// Panics if either `x` or `y` don't have the length `len`.
+/// `len` must be greater than 2.
 pub fn exponential(
     x: impl Iterator<Item = f64>,
-    y: impl Iterator<Item = f64>,
+    y: impl Iterator<Item = f64> + Clone,
     len: usize,
 ) -> ExponentialCoefficients {
+    assert!(len > 2);
+    // let min = y.clone().map(crate::F64OrdHash).min().unwrap().0;
+    // let add = (-min).max(0.0);
     let y = y.map(|y| y.log2());
 
     let coefficients = linear(x, y, len, 1);

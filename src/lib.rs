@@ -3,7 +3,7 @@ use std::hash;
 use std::ops::{Deref, DerefMut};
 
 #[cfg(feature = "regression")]
-#[path ="regression.rs"]
+#[path = "regression.rs"]
 pub mod regression;
 
 pub type Cluster = (f64, usize);
@@ -34,6 +34,38 @@ impl Deref for OwnedClusterList {
 impl DerefMut for OwnedClusterList {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.list
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub(crate) struct F64OrdHash(f64);
+impl F64OrdHash {
+    fn key(&self) -> u64 {
+        self.0.to_bits()
+    }
+}
+impl hash::Hash for F64OrdHash {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: hash::Hasher,
+    {
+        self.key().hash(state)
+    }
+}
+impl PartialEq for F64OrdHash {
+    fn eq(&self, other: &F64OrdHash) -> bool {
+        self.key() == other.key()
+    }
+}
+impl Eq for F64OrdHash {}
+impl PartialOrd for F64OrdHash {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for F64OrdHash {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.partial_cmp(&other.0).unwrap()
     }
 }
 
@@ -137,35 +169,9 @@ impl<'a> ClusterList<'a> {
     ///
     /// O(n)
     pub fn optimize_values(self) -> OwnedClusterList {
-        #[derive(Debug, Copy, Clone)]
-        struct F64Hash(f64);
-
-        impl F64Hash {
-            fn key(&self) -> u64 {
-                self.0.to_bits()
-            }
-        }
-
-        impl hash::Hash for F64Hash {
-            fn hash<H>(&self, state: &mut H)
-            where
-                H: hash::Hasher,
-            {
-                self.key().hash(state)
-            }
-        }
-
-        impl PartialEq for F64Hash {
-            fn eq(&self, other: &F64Hash) -> bool {
-                self.key() == other.key()
-            }
-        }
-
-        impl Eq for F64Hash {}
-
         let mut collected = HashMap::with_capacity(16);
         for (v, count) in self.list {
-            let c = collected.entry(F64Hash(*v)).or_insert(0);
+            let c = collected.entry(F64OrdHash(*v)).or_insert(0);
             *c += count;
         }
         let list = collected.into_iter().map(|(f, c)| (f.0, c)).collect();

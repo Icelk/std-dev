@@ -7,7 +7,8 @@ use std::time::Instant;
 
 use clap::Arg;
 
-pub mod lib;
+// pub mod lib;
+pub use std_dev;
 
 fn parse<T: FromStr>(s: &str) -> Option<T> {
     if let Ok(v) = s.parse() {
@@ -19,7 +20,7 @@ fn parse<T: FromStr>(s: &str) -> Option<T> {
 }
 #[derive(Debug)]
 enum InputValue {
-    Count(Vec<lib::Cluster>),
+    Count(Vec<std_dev::Cluster>),
     List(Vec<Vec<f64>>),
 }
 impl InputValue {
@@ -270,7 +271,7 @@ fn main() {
             None => {
                 let values = {
                     match input {
-                        InputValue::Count(count) => lib::OwnedClusterList::new(count),
+                        InputValue::Count(count) => std_dev::OwnedClusterList::new(count),
                         InputValue::List(list) => {
                             let mut count = Vec::with_capacity(list.len());
                             for item in list {
@@ -282,7 +283,7 @@ fn main() {
                                 let second = item.get(1).map_or(1, |f| f.round() as usize);
                                 count.push((first, second))
                             }
-                            lib::OwnedClusterList::new(count)
+                            std_dev::OwnedClusterList::new(count)
                         }
                     }
                 };
@@ -295,7 +296,7 @@ fn main() {
                 }
                 let now = Instant::now();
 
-                let mean = lib::std_dev(values.borrow());
+                let mean = std_dev::std_dev(values.borrow());
 
                 if debug_performance {
                     println!(
@@ -308,7 +309,7 @@ fn main() {
                 // Sort of clusters required.
                 values.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
-                let median = lib::median(lib::ClusterList::new(&values));
+                let median = std_dev::median(std_dev::ClusterList::new(&values));
 
                 if debug_performance {
                     println!("Median & quadrilles took {}µs", now.elapsed().as_micros());
