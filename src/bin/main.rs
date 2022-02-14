@@ -156,7 +156,9 @@ fn main() {
     #[cfg(feature = "regression")]
     {
         app = app.subcommand(clap::App::new("regression")
-            .about("Find a equation which describes the input data. Tries to automatically determine the process if no arguments specifying it are provided.")
+            .about("Find a equation which describes the input data. Tries to automatically determine the process if no arguments specifying it are provided. \
+            **Predictors** are the independent values (usually denoted `x`) from which we want a equation to get the \
+            **outcomes** - the dependant variables, usually `y` or `f(x)`.")
             .group(clap::ArgGroup::new("process")
                    .arg("order")
                    .arg("linear")
@@ -178,13 +180,17 @@ fn main() {
             .arg(Arg::new("power")
                 .short('p')
                 .long("power")
-                .help("Tries to fit a curve defined by the equation `a * x^b` to the data.")
+                .help("Tries to fit a curve defined by the equation `a * x^b` to the data.\
+                If any of the predictors are below 1, x becomes (x+c), where c is an offset to the predictors. This is due to the arithmetic issue of taking the log of negative numbers and 0.\
+                A negative addition term will be appended if any of the outcomes are below 1.")
             )
             .arg(Arg::new("exponential")
                 .short('e')
+                .visible_alias("growth")
                 .long("exponential")
-                .long("growth")
-                .help("Tries to fit a curve defined by the equation `a * b^b` to the data.")
+                .help("Tries to fit a curve defined by the equation `a * b^x` to the data. \
+                If any of the predictors are below 1, x becomes (x+c), where c is an offset to the predictors. This is due to the arithmetic issue of taking the log of negative numbers and 0. \
+                A negative addition term will be appended if any of the outcomes are below 1.")
             )
         );
     }

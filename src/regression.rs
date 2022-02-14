@@ -1,3 +1,8 @@
+//! Vocabulary:
+//!
+//! - Predictors - the independent values (usually denoted `x`) from which we want a equation to get the:
+//! - outcomes - the dependant variables. Usually `y` or `f(x)`.
+//!
 //! The `*Coefficients` structs all implement [`Predicative`] and [`Display`], which can be used to
 //! view the equations.
 //!
