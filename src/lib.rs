@@ -111,6 +111,8 @@ impl<'a> ClusterList<'a> {
         sum
     }
     /// The inner list must be sorted by the `f64`.
+    // `TODO`: implement https://brilliant.org/wiki/median-finding-algorithm/
+    // https://rcoh.me/posts/linear-time-median-finding/
     pub fn median(&self) -> f64 {
         let len = self.len();
         let even = len % 2 == 0;
