@@ -1,3 +1,4 @@
 -   [ ] Automatically choose process
--   [ ] Linearization - solve all other.
--   [ ] Fix input handling (arrow up, sides, don't spam prompt when pasting (or don't have prompt on multiline?))
+-   [x] Linearization - solve all other.
+-   [ ] Fix input handling? (arrow up, sides, don't spam prompt when pasting (or don't have prompt on multiline?))
+-   [ ] Fix NaN on exponential and power regressions (add the min y + 1 to get all numbers above 1, then fit the curve to that)
