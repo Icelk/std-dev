@@ -2,50 +2,31 @@
 //!
 //! - Predictors - the independent values (usually denoted `x`) from which we want a equation to get the:
 //! - outcomes - the dependant variables. Usually `y` or `f(x)`.
+//! - model - create an equation which optimally (can optimize for different priorities) fits the data.
 //!
-//! The `*Coefficients` structs all implement [`Predicative`] and [`Display`], which can be used to
-//! view the equations.
+//! The `*Coefficients` structs implement [`Predicative`] which calculates the [predicted outcomes](Predicative::predict_outcome)
+//! using the model and their [error](Predicative::error); and [`Display`] which can be used to
+//! show the equations.
+//!
+//! Linear regressions are often used by other regression methods. All linear regressions therefore
+//! implement the [`Linear`] trait. You can use the `*Linear` structs to choose which method to
+//! use.
 //!
 //! # Info on implementation
 //!
-//! [Linear regression](https://towardsdatascience.com/implementing-linear-and-polynomial-regression-from-scratch-f1e3d422e6b4)
-//! [How the linear algebra works](https://medium.com/@andrew.chamberlain/the-linear-algebra-view-of-least-squares-regression-f67044b7f39b)
+//! Details and comments on implementation can be found as docs under each item.
 //!
 //! ## Power & exponent
 //!
 //! I reverse the exponentiation to get a linear model. Then, I solve it using the method linked
 //! above. Then, I transform the returned variables to fit the target model.
 //!
-//! Below, I've inserted the calculations for resolving what to do with the data.
-//!
-//! ### Linear (solved starting point)
-//!
-//! y=ax+b
-//!
-//! ### Power
-//!
-//! y=b * x^a
-//!
-//! lg(y) = lg(b * x^a)
-//! lg(y) = lg(b) + a(lg x)
-//!
-//! Transform: y => lg (y), x => lg(x)
-//!
-//! When values found, take 10^b to get b and a is a
-//!
-//! ### Growth/exponential
-//!
-//! y=b * a^x
-//!
-//! lg(y) = lg(b * a^x)
-//! lg(y) = lg(b) + x(lg a)
-//!
-//! Transform: y => lg (y), x => x
-//!
-//! When values found, take 10^b to get b and 10^a to get a
+//! Under these methods the calculations are inserted, and how to handle the data.
 
 use std::fmt::{self, Display};
 use std::ops::Deref;
+
+pub use self::ols::LinearOls;
 
 pub trait Predictive {
     /// Calculates the predicted outcome of `predictor`.
@@ -85,92 +66,27 @@ pub trait Predictive {
     }
 }
 
-/// The length of the inner vector is `order + 1`.
-///
-/// The inner list is in order of smallest exponent to largest: `[0, 2, 1]` means `y = 1x² + 2x + 0`.
-#[derive(Debug)]
-pub struct PolynomialCoefficients {
-    coefficients: Vec<f64>,
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinearCoefficients {
+    /// slope, x coefficient
+    pub k: f64,
+    /// y intersect, additive
+    pub m: f64,
 }
-impl Deref for PolynomialCoefficients {
-    type Target = [f64];
-    fn deref(&self) -> &Self::Target {
-        &self.coefficients
-    }
-}
-impl Display for PolynomialCoefficients {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut first = true;
-        for (order, mut coefficient) in self.coefficients.iter().copied().enumerate().rev() {
-            if !first {
-                if coefficient.is_sign_positive() {
-                    write!(f, " + ")?;
-                } else {
-                    write!(f, " - ")?;
-                    coefficient = -coefficient;
-                }
-            }
-
-            match order {
-                0 => write!(f, "{coefficient}")?,
-                1 => write!(f, "{coefficient}x")?,
-                _ => write!(f, "{coefficient}x^({order})")?,
-            }
-
-            first = false;
-        }
-        Ok(())
-    }
+pub trait LinearEstimator {
+    fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients;
 }
 
-impl Predictive for PolynomialCoefficients {
-    fn predict_outcome(&self, predictor: f64) -> f64 {
-        let mut out = 0.0;
-        for (order, coefficient) in self.coefficients.iter().copied().enumerate() {
-            out += predictor.powi(order as i32) * coefficient;
-        }
-        out
-    }
+fn min(slice: &[f64]) -> Option<f64> {
+    slice
+        .iter()
+        .copied()
+        .map(crate::F64OrdHash)
+        .min()
+        .map(|f| f.0)
 }
 
-/// # Panics
-///
-/// Panics if either `x` or `y` don't have the length `len`.
-///
-/// Also panics if `order + 1 > len`.
-pub fn linear(
-    x: impl Iterator<Item = f64>,
-    y: impl Iterator<Item = f64>,
-    len: usize,
-    order: usize,
-) -> PolynomialCoefficients {
-    debug_assert!(
-        order < len,
-        "order + 1 must be less than or equal to len"
-    );
-    // `TODO`: Save a copy of the iterator, then iterate over it in the from_fn call.
-    // When a new column is began, start again.
-    let x: Vec<_> = x.collect();
-    let design = nalgebra::DMatrix::from_fn(len, order + 1, |row: usize, column: usize| {
-        if column == 0 {
-            1.0
-        } else if column == 1 {
-            x[row]
-        } else {
-            x[row].powi(column as _)
-        }
-    });
-
-    let t = design.transpose();
-    let y = nalgebra::DMatrix::from_iterator(len, 1, y);
-    let result = ((&t * &design).try_inverse().unwrap() * &t) * y;
-
-    PolynomialCoefficients {
-        coefficients: result.iter().copied().collect(),
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PowerCoefficients {
     /// Constant
     k: f64,
@@ -206,6 +122,10 @@ impl Display for PowerCoefficients {
     }
 }
 
+/// Convenience-method for [`power`] using [`LinearOls`].
+pub fn power_ols(predictors: &mut [f64], outcomes: &mut [f64]) -> PowerCoefficients {
+    power(predictors, outcomes, &LinearOls)
+}
 /// Fits a curve with the equation `y = a * x^b` (optionally with an additional subtractive term if
 /// any outcome is negative and an additive to the `x` if any predictor is negative).
 ///
@@ -215,15 +135,27 @@ impl Display for PowerCoefficients {
 ///
 /// Panics if either `x` or `y` don't have the length `len`.
 /// `len` must be greater than 2.
-pub fn power(
-    predictors: impl Iterator<Item = f64> + Clone,
-    outcomes: impl Iterator<Item = f64> + Clone,
-    len: usize,
+///
+/// # Derivation
+///
+/// y=b * x^a
+///
+/// lg(y) = lg(b * x^a)
+/// lg(y) = lg(b) + a(lg x)
+///
+/// Transform: y => lg (y), x => lg(x)
+///
+/// When values found, take 10^b to get b and a is a
+pub fn power<E: LinearEstimator>(
+    predictors: &mut [f64],
+    outcomes: &mut [f64],
+    estimator: &E,
 ) -> PowerCoefficients {
-    assert!(len > 2);
-    let outcome_min = outcomes.clone().map(crate::F64OrdHash).min().unwrap().0;
-    let predictor_min = predictors.clone().map(crate::F64OrdHash).min().unwrap().0;
-    power_given_min(predictors, outcomes, len, predictor_min, outcome_min)
+    assert!(predictors.len() > 2);
+    assert!(outcomes.len() > 2);
+    let predictor_min = min(predictors).unwrap();
+    let outcome_min = min(outcomes).unwrap();
+    power_given_min(predictors, outcomes, predictor_min, outcome_min, estimator)
 }
 /// Same as [`power`] without the [`Clone`] requirement for the iterators, but takes a min
 /// value.
@@ -231,15 +163,17 @@ pub fn power(
 /// # Panics
 ///
 /// See [`power`].
-pub fn power_given_min(
-    predictors: impl Iterator<Item = f64>,
-    outcomes: impl Iterator<Item = f64>,
-    len: usize,
+pub fn power_given_min<E: LinearEstimator>(
+    predictors: &mut [f64],
+    outcomes: &mut [f64],
     predictor_min: f64,
     outcome_min: f64,
+    estimator: &E,
 ) -> PowerCoefficients {
-    assert!(len > 2);
+    assert_eq!(predictors.len(), outcomes.len());
+    assert!(predictors.len() > 2);
 
+    // If less than 1, exception. Read more about this in the `power` function docs.
     let predictor_additive = if predictor_min < 1.0 {
         Some(1.0 - predictor_min)
     } else {
@@ -251,12 +185,16 @@ pub fn power_given_min(
         None
     };
 
-    let predictors = predictors.map(|pred| (pred + predictor_additive.unwrap_or(0.0)).log2());
-    let outcomes = outcomes.map(|y| (y + outcome_additive.unwrap_or(0.0)).log2());
+    predictors
+        .iter_mut()
+        .for_each(|pred| *pred = (*pred + predictor_additive.unwrap_or(0.0)).log2());
+    outcomes
+        .iter_mut()
+        .for_each(|y| *y = (*y + outcome_additive.unwrap_or(0.0)).log2());
 
-    let coefficients = linear(predictors, outcomes, len, 1);
-    let k = 2.0_f64.powf(coefficients[0]);
-    let e = coefficients[1];
+    let coefficients = estimator.model(predictors, outcomes);
+    let k = 2.0_f64.powf(coefficients.k);
+    let e = coefficients.m;
     PowerCoefficients {
         k,
         e,
@@ -304,6 +242,10 @@ impl Display for ExponentialCoefficients {
     }
 }
 
+/// Convenience-method for [`exponential`] using [`LinearOls`].
+pub fn exponential_ols(predictors: &mut [f64], outcomes: &mut [f64]) -> ExponentialCoefficients {
+    exponential(predictors, outcomes, &LinearOls)
+}
 /// Fits a curve with the equation `y = a * b^x` (optionally with an additional subtractive term if
 /// any outcome is negative and an additive to the `x` if any predictor is negative).
 ///
@@ -313,23 +255,27 @@ impl Display for ExponentialCoefficients {
 ///
 /// Panics if either `x` or `y` don't have the length `len`.
 /// `len` must be greater than 2.
-// `TODO`: If we want cheesy, get the point of the "expected" mean point on the line, and offset it
-// by that much. Is this even possible? Do we have to do iterators to get the best match? Seems
-// like a hacky solution.
-//
-// Exclude the minimum value?
-//
-// Or, if this is just unfixible; we're loosing data when moving it randomly down. This just
-// enables an approximation when the data is under 1.0.
-pub fn exponential(
-    predictors: impl Iterator<Item = f64> + Clone,
-    outcomes: impl Iterator<Item = f64> + Clone,
-    len: usize,
+///
+/// # Derivation
+///
+/// y=b * a^x
+///
+/// lg(y) = lg(b * a^x)
+/// lg(y) = lg(b) + x(lg a)
+///
+/// Transform: y => lg (y), x => x
+///
+/// When values found, take 10^b to get b and 10^a to get a
+pub fn exponential<E: LinearEstimator>(
+    predictors: &mut [f64],
+    outcomes: &mut [f64],
+    estimator: &E,
 ) -> ExponentialCoefficients {
-    assert!(len > 2);
-    let predictor_min = predictors.clone().map(crate::F64OrdHash).min().unwrap().0;
-    let outcome_min = outcomes.clone().map(crate::F64OrdHash).min().unwrap().0;
-    exponential_given_min(predictors, outcomes, len, predictor_min, outcome_min)
+    assert!(predictors.len() > 2);
+    assert!(outcomes.len() > 2);
+    let predictor_min = min(predictors).unwrap();
+    let outcome_min = min(outcomes).unwrap();
+    exponential_given_min(predictors, outcomes, predictor_min, outcome_min, estimator)
 }
 /// Same as [`exponential`] without the [`Clone`] requirement for the iterators, but takes a min
 /// value.
@@ -337,15 +283,17 @@ pub fn exponential(
 /// # Panics
 ///
 /// See [`exponential`].
-pub fn exponential_given_min(
-    predictors: impl Iterator<Item = f64>,
-    outcomes: impl Iterator<Item = f64>,
-    len: usize,
+pub fn exponential_given_min<E: LinearEstimator>(
+    predictors: &mut [f64],
+    outcomes: &mut [f64],
     predictor_min: f64,
     outcome_min: f64,
+    estimator: &E,
 ) -> ExponentialCoefficients {
-    assert!(len > 2);
+    assert_eq!(predictors.len(), outcomes.len());
+    assert!(predictors.len() > 2);
 
+    // If less than 1, exception. Read more about this in the `exponential` function docs.
     let predictor_additive = if predictor_min < 1.0 {
         Some(1.0 - predictor_min)
     } else {
@@ -357,16 +305,136 @@ pub fn exponential_given_min(
         None
     };
 
-    let outcomes = outcomes.map(|y| (y + outcome_additive.unwrap_or(0.0)).log2());
-    let predictors = predictors.map(|pred| pred + predictor_additive.unwrap_or(0.0));
+    if let Some(predictor_additive) = predictor_additive {
+        predictors
+            .iter_mut()
+            .for_each(|pred| *pred += predictor_additive);
+    }
+    outcomes
+        .iter_mut()
+        .for_each(|y| *y = (*y + outcome_additive.unwrap_or(0.0)).log2());
 
-    let coefficients = linear(predictors, outcomes, len, 1);
-    let k = 2.0_f64.powf(coefficients[0]);
-    let b = 2.0_f64.powf(coefficients[1]);
+    let coefficients = estimator.model(predictors, outcomes);
+    let k = 2.0_f64.powf(coefficients.k);
+    let b = 2.0_f64.powf(coefficients.m);
     ExponentialCoefficients {
         k,
         b,
         predictor_additive,
         outcome_additive,
+    }
+}
+/// [Ordinary least squares](https://en.wikipedia.org/wiki/Ordinary_least_squares) implementation.
+///
+/// # Implementation details
+///
+/// This implementation uses linear algebra (namely matrix multiplication, transposed matrices &
+/// the inverse).
+/// For now, I'm not educated enough to understand how to derive it.
+/// I've linked great resources below.
+///
+/// The implementation in code should be relatively simple to follow.
+///
+/// [Linear regression](https://towardsdatascience.com/implementing-linear-and-polynomial-regression-from-scratch-f1e3d422e6b4)
+/// [How the linear algebra works](https://medium.com/@andrew.chamberlain/the-linear-algebra-view-of-least-squares-regression-f67044b7f39b)
+pub mod ols {
+    use super::*;
+
+    pub struct LinearOls;
+    impl LinearEstimator for LinearOls {
+        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+            let coefficients = polynomial(
+                predictors.iter().copied(),
+                outcomes.iter().copied(),
+                predictors.len(),
+                1,
+            );
+            LinearCoefficients {
+                k: coefficients[1],
+                m: coefficients[0],
+            }
+        }
+    }
+
+    /// The length of the inner vector is `order + 1`.
+    ///
+    /// The inner list is in order of smallest exponent to largest: `[0, 2, 1]` means `y = 1x² + 2x + 0`.
+    #[derive(Debug)]
+    pub struct PolynomialCoefficients {
+        coefficients: Vec<f64>,
+    }
+    impl Deref for PolynomialCoefficients {
+        type Target = [f64];
+        fn deref(&self) -> &Self::Target {
+            &self.coefficients
+        }
+    }
+    impl Display for PolynomialCoefficients {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let mut first = true;
+            for (order, mut coefficient) in self.coefficients.iter().copied().enumerate().rev() {
+                if !first {
+                    if coefficient.is_sign_positive() {
+                        write!(f, " + ")?;
+                    } else {
+                        write!(f, " - ")?;
+                        coefficient = -coefficient;
+                    }
+                }
+
+                match order {
+                    0 => write!(f, "{coefficient}")?,
+                    1 => write!(f, "{coefficient}x")?,
+                    _ => write!(f, "{coefficient}x^({order})")?,
+                }
+
+                first = false;
+            }
+            Ok(())
+        }
+    }
+
+    impl Predictive for PolynomialCoefficients {
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            let mut out = 0.0;
+            for (order, coefficient) in self.coefficients.iter().copied().enumerate() {
+                out += predictor.powi(order as i32) * coefficient;
+            }
+            out
+        }
+    }
+
+    /// # Panics
+    ///
+    /// Panics if either `x` or `y` don't have the length `len`.
+    ///
+    /// Also panics if `order + 1 > len`.
+    pub fn polynomial(
+        x: impl Iterator<Item = f64>,
+        y: impl Iterator<Item = f64>,
+        len: usize,
+        order: usize,
+    ) -> PolynomialCoefficients {
+        debug_assert!(order < len, "order + 1 must be less than or equal to len");
+        // `TODO`: Save a copy of the iterator, then iterate over it in the from_fn call.
+        // When a new column is began, start again.
+        let x: Vec<_> = x.collect();
+        let design = nalgebra::DMatrix::from_fn(len, order + 1, |row: usize, column: usize| {
+            if column == 0 {
+                1.0
+            } else if column == 1 {
+                x[row]
+            } else {
+                x[row].powi(column as _)
+            }
+        });
+
+        let t = design.transpose();
+        let y = nalgebra::DMatrix::from_iterator(len, 1, y);
+        let result = ((&t * &design).try_inverse().unwrap() * &t) * y;
+
+        PolynomialCoefficients {
+            coefficients: result.iter().copied().collect(),
+        }
     }
 }

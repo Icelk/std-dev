@@ -245,15 +245,22 @@ fn main() {
                 };
 
                 let len = values.len();
-                let x = values.iter().map(|d| d[0]);
-                let y = values.iter().map(|d| d[1]);
+                let x_iter = values.iter().map(|d| d[0]);
+                let y_iter = values.iter().map(|d| d[1]);
 
-                if config.is_present("power") {
-                    let coefficients = std_dev::regression::power(x.clone(), y.clone(), len);
-                    print_regression(coefficients, x, y, len);
-                } else if config.is_present("exponential") {
-                    let coefficients = std_dev::regression::exponential(x.clone(), y.clone(), len);
-                    print_regression(coefficients, x, y, len);
+                if config.is_present("power") || config.is_present("exponential") {
+                    let mut x: Vec<f64> = x_iter.clone().collect();
+                    let mut y: Vec<f64> = y_iter.clone().collect();
+
+                    if config.is_present("power") {
+                        let coefficients = std_dev::regression::power_ols(&mut x, &mut y);
+                        print_regression(coefficients, x_iter, y_iter, len);
+                    } else {
+                        assert!(config.is_present("exponential"));
+
+                        let coefficients = std_dev::regression::exponential_ols(&mut x, &mut y);
+                        print_regression(coefficients, x_iter, y_iter, len);
+                    }
                 } else {
                     let order = {
                         if let Ok(order) = config.value_of_t("order") {
@@ -267,10 +274,14 @@ fn main() {
                         continue 'main;
                     }
 
-                    let coefficients =
-                        std_dev::regression::linear(x.clone(), y.clone(), len, order);
+                    let coefficients = std_dev::regression::ols::polynomial(
+                        x_iter.clone(),
+                        y_iter.clone(),
+                        len,
+                        order,
+                    );
 
-                    print_regression(coefficients, x, y, len);
+                    print_regression(coefficients, x_iter, y_iter, len);
                 }
             }
             Some(_) => unreachable!("invalid subcommand"),
