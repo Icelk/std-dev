@@ -9,3 +9,7 @@
 -   [ ] Performance logging in regression calculations.
 -   [ ] Plotting of data & regressions using [poloto](https://crates.io/crates/poloto) or [plotlib](https://crates.io/crates/plotlib)
 -   [ ] Arbitrary precision for high order polynomials.
+-   [ ] [RANSAC](https://en.wikipedia.org/wiki/Random_sample_consensus) implementation? Iterations = lg(1-chance of success) * (lg(number of data points) / lg(outliers in relation to total))
+-   [ ] [Non](https://en.wikipedia.org/wiki/K-nearest_neighbors_algorithm)-[parametric](https://en.wikipedia.org/wiki/Local_regression) regression? 
+-   [ ] Support covariance, for better estimation.
+-   [ ] [Non-linear regression?](https://en.wikipedia.org/wiki/Non-linear_least_squares)
