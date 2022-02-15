@@ -1,4 +1,9 @@
 -   [ ] Automatically choose process
 -   [x] Linearization - solve all other.
--   [ ] Fix input handling? (arrow up, sides, don't spam prompt when pasting (or don't have prompt on multiline?))
--   [ ] Fix NaN on exponential and power regressions (add the min y + 1 to get all numbers above 1, then fit the curve to that)
+-   [x] Fix input handling? (arrow up, sides, don't spam prompt when pasting (or don't have prompt on multiline?))
+-   [x] Fix NaN on exponential and power regressions (add the min y + 1 to get all numbers above 1, then fit the curve to that)
+-   [ ] Slow ( O(n²) ) Theil-Sen estimator
+-   [ ] O(n log n) Theil-Sen estimator (heavy-hitter, very hard)
+-   [ ] O(n) median
+-   [ ] All statistical tools for unique lists (not `Cluster`s)
+-   [ ] Performance logging in regression calculations.
