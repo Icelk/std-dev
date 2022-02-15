@@ -26,7 +26,10 @@
 use std::fmt::{self, Display};
 use std::ops::Deref;
 
-pub use self::ols::LinearOls;
+pub use derived::{
+    exponential, exponential_ols, power, power_ols, ExponentialCoefficients, PowerCoefficients,
+};
+pub use ols::LinearOls;
 
 pub trait Predictive {
     /// Calculates the predicted outcome of `predictor`.
@@ -73,257 +76,275 @@ pub struct LinearCoefficients {
     /// y intersect, additive
     pub m: f64,
 }
+impl Predictive for LinearCoefficients {
+    fn predict_outcome(&self, predictor: f64) -> f64 {
+        self.k * predictor + self.m
+    }
+}
+impl Display for LinearCoefficients {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}x + {}", self.k, self.m)
+    }
+}
+
 pub trait LinearEstimator {
     fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients;
 }
 
-fn min(slice: &[f64]) -> Option<f64> {
-    slice
-        .iter()
-        .copied()
-        .map(crate::F64OrdHash)
-        .min()
-        .map(|f| f.0)
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct PowerCoefficients {
-    /// Constant
-    k: f64,
-    /// exponent
-    e: f64,
-    predictor_additive: Option<f64>,
-    outcome_additive: Option<f64>,
-}
-impl Predictive for PowerCoefficients {
-    fn predict_outcome(&self, predictor: f64) -> f64 {
-        self.k * (predictor + self.predictor_additive.unwrap_or(0.0)).powf(self.e)
-            - self.outcome_additive.unwrap_or(0.0)
+pub mod derived {
+    use super::*;
+    fn min(slice: &[f64]) -> Option<f64> {
+        slice
+            .iter()
+            .copied()
+            .map(crate::F64OrdHash)
+            .min()
+            .map(|f| f.0)
     }
-}
-impl Display for PowerCoefficients {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} * {x}^{}{}",
-            self.k,
-            self.e,
-            if let Some(out) = self.outcome_additive {
-                format!(" - {}", out)
-            } else {
-                String::new()
-            },
-            x = if let Some(pred) = self.predictor_additive {
-                format!("(x + {})", pred)
-            } else {
-                "x".to_string()
-            },
-        )
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct PowerCoefficients {
+        /// Constant
+        k: f64,
+        /// exponent
+        e: f64,
+        predictor_additive: Option<f64>,
+        outcome_additive: Option<f64>,
     }
-}
-
-/// Convenience-method for [`power`] using [`LinearOls`].
-pub fn power_ols(predictors: &mut [f64], outcomes: &mut [f64]) -> PowerCoefficients {
-    power(predictors, outcomes, &LinearOls)
-}
-/// Fits a curve with the equation `y = a * x^b` (optionally with an additional subtractive term if
-/// any outcome is negative and an additive to the `x` if any predictor is negative).
-///
-/// Also sometimes called "growth".
-///
-/// # Panics
-///
-/// Panics if either `x` or `y` don't have the length `len`.
-/// `len` must be greater than 2.
-///
-/// # Derivation
-///
-/// y=b * x^a
-///
-/// lg(y) = lg(b * x^a)
-/// lg(y) = lg(b) + a(lg x)
-///
-/// Transform: y => lg (y), x => lg(x)
-///
-/// When values found, take 10^b to get b and a is a
-pub fn power<E: LinearEstimator>(
-    predictors: &mut [f64],
-    outcomes: &mut [f64],
-    estimator: &E,
-) -> PowerCoefficients {
-    assert!(predictors.len() > 2);
-    assert!(outcomes.len() > 2);
-    let predictor_min = min(predictors).unwrap();
-    let outcome_min = min(outcomes).unwrap();
-    power_given_min(predictors, outcomes, predictor_min, outcome_min, estimator)
-}
-/// Same as [`power`] without the [`Clone`] requirement for the iterators, but takes a min
-/// value.
-///
-/// # Panics
-///
-/// See [`power`].
-pub fn power_given_min<E: LinearEstimator>(
-    predictors: &mut [f64],
-    outcomes: &mut [f64],
-    predictor_min: f64,
-    outcome_min: f64,
-    estimator: &E,
-) -> PowerCoefficients {
-    assert_eq!(predictors.len(), outcomes.len());
-    assert!(predictors.len() > 2);
-
-    // If less than 1, exception. Read more about this in the `power` function docs.
-    let predictor_additive = if predictor_min < 1.0 {
-        Some(1.0 - predictor_min)
-    } else {
-        None
-    };
-    let outcome_additive = if outcome_min < 1.0 {
-        Some(1.0 - outcome_min)
-    } else {
-        None
-    };
-
-    predictors
-        .iter_mut()
-        .for_each(|pred| *pred = (*pred + predictor_additive.unwrap_or(0.0)).log2());
-    outcomes
-        .iter_mut()
-        .for_each(|y| *y = (*y + outcome_additive.unwrap_or(0.0)).log2());
-
-    let coefficients = estimator.model(predictors, outcomes);
-    let k = 2.0_f64.powf(coefficients.m);
-    let e = coefficients.k;
-    PowerCoefficients {
-        k,
-        e,
-        predictor_additive,
-        outcome_additive,
+    impl Predictive for PowerCoefficients {
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            self.k * (predictor + self.predictor_additive.unwrap_or(0.0)).powf(self.e)
+                - self.outcome_additive.unwrap_or(0.0)
+        }
     }
-}
-
-#[derive(Debug)]
-pub struct ExponentialCoefficients {
-    /// Constant
-    k: f64,
-    /// base
-    b: f64,
-    predictor_additive: Option<f64>,
-    outcome_additive: Option<f64>,
-}
-impl Predictive for ExponentialCoefficients {
-    fn predict_outcome(&self, predictor: f64) -> f64 {
-        self.k
-            * self
-                .b
-                .powf(predictor + self.predictor_additive.unwrap_or(0.0))
-            - self.outcome_additive.unwrap_or(0.0)
+    impl Display for PowerCoefficients {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "{} * {x}^{}{}",
+                self.k,
+                self.e,
+                if let Some(out) = self.outcome_additive {
+                    format!(" - {}", out)
+                } else {
+                    String::new()
+                },
+                x = if let Some(pred) = self.predictor_additive {
+                    format!("(x + {})", pred)
+                } else {
+                    "x".to_string()
+                },
+            )
+        }
     }
-}
-impl Display for ExponentialCoefficients {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} * {}^{x}{}",
-            self.k,
-            self.b,
-            if let Some(out) = self.outcome_additive {
-                format!(" - {}", out)
-            } else {
-                String::new()
-            },
-            x = if let Some(pred) = self.predictor_additive {
-                format!("(x + {})", pred)
-            } else {
-                "x".to_string()
-            },
-        )
+
+    /// Convenience-method for [`power`] using [`LinearOls`].
+    pub fn power_ols(predictors: &mut [f64], outcomes: &mut [f64]) -> PowerCoefficients {
+        power(predictors, outcomes, &LinearOls)
     }
-}
+    /// Fits a curve with the equation `y = a * x^b` (optionally with an additional subtractive term if
+    /// any outcome is negative and an additive to the `x` if any predictor is negative).
+    ///
+    /// Also sometimes called "growth".
+    ///
+    /// # Panics
+    ///
+    /// Panics if either `x` or `y` don't have the length `len`.
+    /// `len` must be greater than 2.
+    ///
+    /// # Derivation
+    ///
+    /// y=b * x^a
+    ///
+    /// lg(y) = lg(b * x^a)
+    /// lg(y) = lg(b) + a(lg x)
+    ///
+    /// Transform: y => lg (y), x => lg(x)
+    ///
+    /// When values found, take 10^b to get b and a is a
+    pub fn power<E: LinearEstimator>(
+        predictors: &mut [f64],
+        outcomes: &mut [f64],
+        estimator: &E,
+    ) -> PowerCoefficients {
+        assert!(predictors.len() > 2);
+        assert!(outcomes.len() > 2);
+        let predictor_min = min(predictors).unwrap();
+        let outcome_min = min(outcomes).unwrap();
+        power_given_min(predictors, outcomes, predictor_min, outcome_min, estimator)
+    }
+    /// Same as [`power`] without the [`Clone`] requirement for the iterators, but takes a min
+    /// value.
+    ///
+    /// # Panics
+    ///
+    /// See [`power`].
+    pub fn power_given_min<E: LinearEstimator>(
+        predictors: &mut [f64],
+        outcomes: &mut [f64],
+        predictor_min: f64,
+        outcome_min: f64,
+        estimator: &E,
+    ) -> PowerCoefficients {
+        assert_eq!(predictors.len(), outcomes.len());
+        assert!(predictors.len() > 2);
 
-/// Convenience-method for [`exponential`] using [`LinearOls`].
-pub fn exponential_ols(predictors: &mut [f64], outcomes: &mut [f64]) -> ExponentialCoefficients {
-    exponential(predictors, outcomes, &LinearOls)
-}
-/// Fits a curve with the equation `y = a * b^x` (optionally with an additional subtractive term if
-/// any outcome is negative and an additive to the `x` if any predictor is negative).
-///
-/// Also sometimes called "growth".
-///
-/// # Panics
-///
-/// Panics if either `x` or `y` don't have the length `len`.
-/// `len` must be greater than 2.
-///
-/// # Derivation
-///
-/// y=b * a^x
-///
-/// lg(y) = lg(b * a^x)
-/// lg(y) = lg(b) + x(lg a)
-///
-/// Transform: y => lg (y), x => x
-///
-/// When values found, take 10^b to get b and 10^a to get a
-pub fn exponential<E: LinearEstimator>(
-    predictors: &mut [f64],
-    outcomes: &mut [f64],
-    estimator: &E,
-) -> ExponentialCoefficients {
-    assert!(predictors.len() > 2);
-    assert!(outcomes.len() > 2);
-    let predictor_min = min(predictors).unwrap();
-    let outcome_min = min(outcomes).unwrap();
-    exponential_given_min(predictors, outcomes, predictor_min, outcome_min, estimator)
-}
-/// Same as [`exponential`] without the [`Clone`] requirement for the iterators, but takes a min
-/// value.
-///
-/// # Panics
-///
-/// See [`exponential`].
-pub fn exponential_given_min<E: LinearEstimator>(
-    predictors: &mut [f64],
-    outcomes: &mut [f64],
-    predictor_min: f64,
-    outcome_min: f64,
-    estimator: &E,
-) -> ExponentialCoefficients {
-    assert_eq!(predictors.len(), outcomes.len());
-    assert!(predictors.len() > 2);
+        // If less than 1, exception. Read more about this in the `power` function docs.
+        let predictor_additive = if predictor_min < 1.0 {
+            Some(1.0 - predictor_min)
+        } else {
+            None
+        };
+        let outcome_additive = if outcome_min < 1.0 {
+            Some(1.0 - outcome_min)
+        } else {
+            None
+        };
 
-    // If less than 1, exception. Read more about this in the `exponential` function docs.
-    let predictor_additive = if predictor_min < 1.0 {
-        Some(1.0 - predictor_min)
-    } else {
-        None
-    };
-    let outcome_additive = if outcome_min < 1.0 {
-        Some(1.0 - outcome_min)
-    } else {
-        None
-    };
-
-    if let Some(predictor_additive) = predictor_additive {
         predictors
             .iter_mut()
-            .for_each(|pred| *pred += predictor_additive);
-    }
-    outcomes
-        .iter_mut()
-        .for_each(|y| *y = (*y + outcome_additive.unwrap_or(0.0)).log2());
+            .for_each(|pred| *pred = (*pred + predictor_additive.unwrap_or(0.0)).log2());
+        outcomes
+            .iter_mut()
+            .for_each(|y| *y = (*y + outcome_additive.unwrap_or(0.0)).log2());
 
-    let coefficients = estimator.model(predictors, outcomes);
-    let k = 2.0_f64.powf(coefficients.m);
-    let b = 2.0_f64.powf(coefficients.k);
-    ExponentialCoefficients {
-        k,
-        b,
-        predictor_additive,
-        outcome_additive,
+        let coefficients = estimator.model(predictors, outcomes);
+        let k = 2.0_f64.powf(coefficients.m);
+        let e = coefficients.k;
+        PowerCoefficients {
+            k,
+            e,
+            predictor_additive,
+            outcome_additive,
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct ExponentialCoefficients {
+        /// Constant
+        k: f64,
+        /// base
+        b: f64,
+        predictor_additive: Option<f64>,
+        outcome_additive: Option<f64>,
+    }
+    impl Predictive for ExponentialCoefficients {
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            self.k
+                * self
+                    .b
+                    .powf(predictor + self.predictor_additive.unwrap_or(0.0))
+                - self.outcome_additive.unwrap_or(0.0)
+        }
+    }
+    impl Display for ExponentialCoefficients {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "{} * {}^{x}{}",
+                self.k,
+                self.b,
+                if let Some(out) = self.outcome_additive {
+                    format!(" - {}", out)
+                } else {
+                    String::new()
+                },
+                x = if let Some(pred) = self.predictor_additive {
+                    format!("(x + {})", pred)
+                } else {
+                    "x".to_string()
+                },
+            )
+        }
+    }
+
+    /// Convenience-method for [`exponential`] using [`LinearOls`].
+    pub fn exponential_ols(
+        predictors: &mut [f64],
+        outcomes: &mut [f64],
+    ) -> ExponentialCoefficients {
+        exponential(predictors, outcomes, &LinearOls)
+    }
+    /// Fits a curve with the equation `y = a * b^x` (optionally with an additional subtractive term if
+    /// any outcome is negative and an additive to the `x` if any predictor is negative).
+    ///
+    /// Also sometimes called "growth".
+    ///
+    /// # Panics
+    ///
+    /// Panics if either `x` or `y` don't have the length `len`.
+    /// `len` must be greater than 2.
+    ///
+    /// # Derivation
+    ///
+    /// y=b * a^x
+    ///
+    /// lg(y) = lg(b * a^x)
+    /// lg(y) = lg(b) + x(lg a)
+    ///
+    /// Transform: y => lg (y), x => x
+    ///
+    /// When values found, take 10^b to get b and 10^a to get a
+    pub fn exponential<E: LinearEstimator>(
+        predictors: &mut [f64],
+        outcomes: &mut [f64],
+        estimator: &E,
+    ) -> ExponentialCoefficients {
+        assert!(predictors.len() > 2);
+        assert!(outcomes.len() > 2);
+        let predictor_min = min(predictors).unwrap();
+        let outcome_min = min(outcomes).unwrap();
+        exponential_given_min(predictors, outcomes, predictor_min, outcome_min, estimator)
+    }
+    /// Same as [`exponential`] without the [`Clone`] requirement for the iterators, but takes a min
+    /// value.
+    ///
+    /// # Panics
+    ///
+    /// See [`exponential`].
+    pub fn exponential_given_min<E: LinearEstimator>(
+        predictors: &mut [f64],
+        outcomes: &mut [f64],
+        predictor_min: f64,
+        outcome_min: f64,
+        estimator: &E,
+    ) -> ExponentialCoefficients {
+        assert_eq!(predictors.len(), outcomes.len());
+        assert!(predictors.len() > 2);
+
+        // If less than 1, exception. Read more about this in the `exponential` function docs.
+        let predictor_additive = if predictor_min < 1.0 {
+            Some(1.0 - predictor_min)
+        } else {
+            None
+        };
+        let outcome_additive = if outcome_min < 1.0 {
+            Some(1.0 - outcome_min)
+        } else {
+            None
+        };
+
+        if let Some(predictor_additive) = predictor_additive {
+            predictors
+                .iter_mut()
+                .for_each(|pred| *pred += predictor_additive);
+        }
+        outcomes
+            .iter_mut()
+            .for_each(|y| *y = (*y + outcome_additive.unwrap_or(0.0)).log2());
+
+        let coefficients = estimator.model(predictors, outcomes);
+        let k = 2.0_f64.powf(coefficients.m);
+        let b = 2.0_f64.powf(coefficients.k);
+        ExponentialCoefficients {
+            k,
+            b,
+            predictor_additive,
+            outcome_additive,
+        }
     }
 }
+
 /// [Ordinary least squares](https://en.wikipedia.org/wiki/Ordinary_least_squares) implementation.
 ///
 /// # Implementation details
