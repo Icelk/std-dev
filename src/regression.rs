@@ -4,12 +4,12 @@
 //! - outcomes - the dependant variables. Usually `y` or `f(x)`.
 //! - model - create an equation which optimally (can optimize for different priorities) fits the data.
 //!
-//! The `*Coefficients` structs implement [`Predicative`] which calculates the [predicted outcomes](Predicative::predict_outcome)
-//! using the model and their [error](Predicative::error); and [`Display`] which can be used to
+//! The `*Coefficients` structs implement [`Predictive`] which calculates the [predicted outcomes](Predictive::predict_outcome)
+//! using the model and their [error](Predictive::error); and [`Display`] which can be used to
 //! show the equations.
 //!
 //! Linear regressions are often used by other regression methods. All linear regressions therefore
-//! implement the [`Linear`] trait. You can use the `*Linear` structs to choose which method to
+//! implement the [`LinearEstimator`] trait. You can use the `*Linear` structs to choose which method to
 //! use.
 //!
 //! # Info on implementation
@@ -20,6 +20,10 @@
 //!
 //! I reverse the exponentiation to get a linear model. Then, I solve it using the method linked
 //! above. Then, I transform the returned variables to fit the target model.
+//!
+//! Many programs (including LibreOffice Calc) simply discards negative & zero values. I chose to
+//! go the explicit route and add additional terms to satisfy requirements.
+//! This is naturally a fallback, and should be a warning sign your data is bad.
 //!
 //! Under these methods the calculations are inserted, and how to handle the data.
 
@@ -91,6 +95,9 @@ pub trait LinearEstimator {
     fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients;
 }
 
+/// Estimators derived from others, usual [`LinearEstimator`].
+///
+/// See the docs on the items for more info about how they're created.
 pub mod derived {
     use super::*;
     fn min(slice: &[f64]) -> Option<f64> {
@@ -105,11 +112,13 @@ pub mod derived {
     #[derive(Debug, Clone, PartialEq)]
     pub struct PowerCoefficients {
         /// Constant
-        k: f64,
+        pub k: f64,
         /// exponent
-        e: f64,
-        predictor_additive: Option<f64>,
-        outcome_additive: Option<f64>,
+        pub e: f64,
+        /// If the predictors needs to have an offset applied to remove values under 1.
+        pub predictor_additive: Option<f64>,
+        /// If the outcomes needs to have an offset applied to remove values under 1.
+        pub outcome_additive: Option<f64>,
     }
     impl Predictive for PowerCoefficients {
         fn predict_outcome(&self, predictor: f64) -> f64 {
@@ -222,11 +231,13 @@ pub mod derived {
     #[derive(Debug)]
     pub struct ExponentialCoefficients {
         /// Constant
-        k: f64,
+        pub k: f64,
         /// base
-        b: f64,
-        predictor_additive: Option<f64>,
-        outcome_additive: Option<f64>,
+        pub b: f64,
+        /// If the predictors needs to have an offset applied to remove values under 1.
+        pub predictor_additive: Option<f64>,
+        /// If the outcomes needs to have an offset applied to remove values under 1.
+        pub outcome_additive: Option<f64>,
     }
     impl Predictive for ExponentialCoefficients {
         fn predict_outcome(&self, predictor: f64) -> f64 {
