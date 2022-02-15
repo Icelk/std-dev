@@ -7,3 +7,4 @@
 -   [ ] O(n) median
 -   [ ] All statistical tools for unique lists (not `Cluster`s)
 -   [ ] Performance logging in regression calculations.
+-   [ ] Plotting of data & regressions using [poloto](https://crates.io/crates/poloto) or [plotlib](https://crates.io/crates/plotlib)
