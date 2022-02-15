@@ -19,6 +19,23 @@ an interactive **CLI** program, and through **piping** data to it, through stand
 It accepts any comma/space separated values. Scientific notation is supported.
 This is minimalistic by design, as other programs may be used to produce/modify the data before it's processed by us.
 
+# Cargo features
+
+When using this as a library, I recommend disabling all features (`std-dev = { version = "0.1", default-features = false }`)
+and enabling those you need.
+
+## Bin
+
+This enables the binary to compile.
+
+## Prettier
+
+Makes the binary output prettier. Includes colours and prompts for interactive use.
+
+## Regression
+
+Enables all regression estimators. This requires `nalgebra`, which provides linear algebra.
+
 # Performance
 
 The n here isn't numer of elements, but rather number of *unique* elements.
