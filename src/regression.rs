@@ -193,8 +193,8 @@ pub fn power_given_min<E: LinearEstimator>(
         .for_each(|y| *y = (*y + outcome_additive.unwrap_or(0.0)).log2());
 
     let coefficients = estimator.model(predictors, outcomes);
-    let k = 2.0_f64.powf(coefficients.k);
-    let e = coefficients.m;
+    let k = 2.0_f64.powf(coefficients.m);
+    let e = coefficients.k;
     PowerCoefficients {
         k,
         e,
@@ -315,8 +315,8 @@ pub fn exponential_given_min<E: LinearEstimator>(
         .for_each(|y| *y = (*y + outcome_additive.unwrap_or(0.0)).log2());
 
     let coefficients = estimator.model(predictors, outcomes);
-    let k = 2.0_f64.powf(coefficients.k);
-    let b = 2.0_f64.powf(coefficients.m);
+    let k = 2.0_f64.powf(coefficients.m);
+    let b = 2.0_f64.powf(coefficients.k);
     ExponentialCoefficients {
         k,
         b,

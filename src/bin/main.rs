@@ -7,7 +7,6 @@ use std::time::Instant;
 
 use clap::Arg;
 
-// pub mod lib;
 pub use std_dev;
 
 fn parse<T: FromStr>(s: &str) -> Option<T> {
