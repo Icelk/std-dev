@@ -1,6 +1,6 @@
 -   [x] Change precision in output.
 -   [x] Arbitrary precision for high degree polynomials.
--   [ ] Automatically choose process
+-   [x] Automatically choose process
 -   [x] Linearization - solve all other.
 -   [x] Fix input handling? (arrow up, sides, don't spam prompt when pasting (or don't have prompt on multiline?))
 -   [x] Fix NaN on exponential and power regressions (add the min y + 1 to get all numbers above 1, then fit the curve to that)

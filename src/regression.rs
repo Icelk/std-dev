@@ -5,7 +5,7 @@
 //! - model - create an equation which optimally (can optimize for different priorities) fits the data.
 //!
 //! The `*Coefficients` structs implement [`Predictive`] which calculates the [predicted outcomes](Predictive::predict_outcome)
-//! using the model and their [error](Predictive::error); and [`Display`] which can be used to
+//! using the model and their [determination](Determination::determination); and [`Display`] which can be used to
 //! show the equations.
 //!
 //! Linear regressions are often used by other regression methods. All linear regressions therefore
@@ -38,6 +38,7 @@ pub use ols::LinearOls;
 trait Model: Predictive + Display {}
 impl<T: Predictive + Display> Model for T {}
 
+/// Generic model. This enables easily handling results from several models.
 pub struct DynModel {
     model: Box<dyn Model>,
 }
@@ -63,9 +64,9 @@ pub trait Predictive {
     /// Calculates the predicted outcome of `predictor`.
     fn predict_outcome(&self, predictor: f64) -> f64;
 }
-/// Helper trait to make the [`Determination::error`] method take a generic iterator.
+/// Helper trait to make the [R²](Determination::determination) method take a generic iterator.
 ///
-/// This enables [`Predicative`] to be `dyn`.
+/// This enables [`Predictive`] to be `dyn`.
 pub trait Determination: Predictive {
     /// Calculates the R² (coefficient of determination), the proportion of variation in predicted
     /// model.
@@ -78,7 +79,7 @@ pub trait Determination: Predictive {
     ///
     /// O(n)
     // For implementation, see https://en.wikipedia.org/wiki/Coefficient_of_determination#Definitions
-    fn error(
+    fn determination(
         &self,
         predictors: impl Iterator<Item = f64>,
         outcomes: impl Iterator<Item = f64> + Clone,
@@ -98,6 +99,20 @@ pub trait Determination: Predictive {
             .sum();
 
         1.0 - (res / tot)
+    }
+    /// Convenience method for [`Determination::determination`] when using slices.
+    fn determination_slice(&self, predictors: &[f64], outcomes: &[f64]) -> f64 {
+        assert_eq!(
+            predictors.len(),
+            outcomes.len(),
+            "predictors and outcomes must have the same number of items"
+        );
+        Determination::determination(
+            self,
+            predictors.iter().cloned(),
+            outcomes.iter().cloned(),
+            predictors.len(),
+        )
     }
 }
 impl<T: Predictive> Determination for T {}
@@ -121,8 +136,157 @@ impl Display for LinearCoefficients {
     }
 }
 
+/// Implemented by all methods yielding a linear 2 variable regression (a line).
 pub trait LinearEstimator {
+    /// Model the [`LinearCoefficients`] from `predictors` and `outcomes`,
     fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients;
+}
+
+/// Finds the model best fit to the input data.
+/// This is done using heuristics and testing of methods.
+///
+/// # Panics
+///
+/// Panics if the model has less than two parameters or if the two slices have different lengths.
+///
+/// # Heuristics
+///
+/// These seemed good to me. Any ideas on improving them are welcome.
+///
+/// - Power and exponentials only if no data is < 1.
+///   This is due to the sub-optimal behaviour of logarithm with values close to and under 0.
+///   This restriction might be lifted to just < 1e-9 in the future.
+/// - Power is heavily favoured if `let distance_from_zero = -(0.5 - exponent % 1).abs() + 0.5;
+/// distance_from_zero < 0.15 && -2.5 < exponent < 2.5`
+/// - Exponential favoured if R² > 0.8, which seldom happens with exponential regression.
+/// - Bump the rating of linear, as that's probably what you want.
+/// - 2'nd degree polynomial is only considered if `n > 15`, where `n` is `predictors.len()`.
+/// - 3'nd degree polynomial is only considered if `n > 50`
+pub fn best_fit(
+    predictors: &[f64],
+    outcomes: &[f64],
+    linear_estimator: &impl LinearEstimator,
+) -> DynModel {
+    // These values are chosen from heuristics in my brain
+    /// Additive
+    const LINEAR_BUMP: f64 = 0.0;
+    /// Multiplicative
+    const POWER_BUMP: f64 = 1.5;
+    /// Multiplicative
+    const EXPONENTIAL_BUMP: f64 = 1.3;
+    /// Used to partially mitigate [overfitting](https://en.wikipedia.org/wiki/Overfitting).
+    ///
+    /// Multiplicative
+    const THIRD_DEGREE_DISADVANTAGE: f64 = 0.94;
+
+    let mut best: Option<(DynModel, f64)> = None;
+    macro_rules! update_best {
+        ($new: expr, $e: ident, $modificator: expr, $err: expr) => {
+            let $e = $err;
+            let weighted = $modificator;
+            if let Some((_, error)) = &best {
+                if weighted > *error {
+                    best = Some((DynModel::new($new), weighted))
+                }
+            } else {
+                best = Some((DynModel::new($new), weighted))
+            }
+        };
+        ($new: expr, $e: ident, $modificator: expr) => {
+            update_best!(
+                $new,
+                $e,
+                $modificator,
+                $new.determination_slice(predictors, outcomes)
+            )
+        };
+        ($new: expr) => {
+            update_best!($new, e, e)
+        };
+    }
+
+    let predictor_min = derived::min(predictors).unwrap();
+    let outcomes_min = derived::min(outcomes).unwrap();
+
+    if predictor_min >= 1.0 && outcomes_min >= 1.0 {
+        let mut mod_predictors = predictors.to_vec();
+        let mut mod_outcomes = outcomes.to_vec();
+        let power = derived::power_given_min(
+            &mut mod_predictors,
+            &mut mod_outcomes,
+            predictor_min,
+            outcomes_min,
+            linear_estimator,
+        );
+
+        let distance_from_zero = -(0.5 - power.e % 1.0).abs() + 0.5;
+        let mut power_bump = if distance_from_zero < 0.15 {
+            POWER_BUMP
+        } else {
+            1.0
+        };
+        let certainty = power.determination_slice(predictors, outcomes);
+        if certainty > 0.8 {
+            power_bump *= EXPONENTIAL_BUMP;
+        }
+        if certainty > 0.92 {
+            power_bump *= EXPONENTIAL_BUMP;
+        }
+
+        update_best!(power, e, e * power_bump, certainty);
+
+        mod_predictors[..].copy_from_slice(predictors);
+        mod_outcomes[..].copy_from_slice(outcomes);
+
+        let exponential = derived::exponential_given_min(
+            &mut mod_predictors,
+            &mut mod_outcomes,
+            predictor_min,
+            outcomes_min,
+            linear_estimator,
+        );
+        let certainty = exponential.determination_slice(predictors, outcomes);
+
+        let mut exponential_bump = if certainty > 0.8 {
+            EXPONENTIAL_BUMP
+        } else {
+            1.0
+        };
+        if certainty > 0.92 {
+            exponential_bump *= EXPONENTIAL_BUMP;
+        }
+
+        update_best!(exponential, e, e * exponential_bump, certainty);
+    }
+    if predictors.len() > 15 {
+        let degree_2 = ols::polynomial(
+            predictors.iter().copied(),
+            outcomes.iter().copied(),
+            predictors.len(),
+            2,
+        );
+
+        update_best!(degree_2);
+    }
+    if predictors.len() > 50 {
+        let degree_3 = ols::polynomial(
+            predictors.iter().copied(),
+            outcomes.iter().copied(),
+            predictors.len(),
+            3,
+        );
+
+        update_best!(degree_3, e, e * THIRD_DEGREE_DISADVANTAGE);
+    }
+
+    let linear = linear_estimator.model(predictors, outcomes);
+    update_best!(linear, e, e + LINEAR_BUMP);
+    // UNWRAP: We just set it, at least there's a linear.
+    best.unwrap().0
+}
+/// Convenience function for [`best_fit`] using [`LinearOls`].
+pub fn best_fit_ols(predictors: &mut [f64], outcomes: &mut [f64]) -> DynModel {
+    best_fit(predictors, outcomes, &LinearOls)
 }
 
 /// Estimators derived from others, usual [`LinearEstimator`].
@@ -130,7 +294,7 @@ pub trait LinearEstimator {
 /// See the docs on the items for more info about how they're created.
 pub mod derived {
     use super::*;
-    fn min(slice: &[f64]) -> Option<f64> {
+    pub(super) fn min(slice: &[f64]) -> Option<f64> {
         slice
             .iter()
             .copied()
@@ -184,7 +348,7 @@ pub mod derived {
         power(predictors, outcomes, &LinearOls)
     }
     /// Fits a curve with the equation `y = a * x^b` (optionally with an additional subtractive term if
-    /// any outcome is negative and an additive to the `x` if any predictor is negative).
+    /// any outcome is < 1 and an additive to the `x` if any predictor is < 1).
     ///
     /// Also sometimes called "growth".
     ///
@@ -311,7 +475,7 @@ pub mod derived {
         exponential(predictors, outcomes, &LinearOls)
     }
     /// Fits a curve with the equation `y = a * b^x` (optionally with an additional subtractive term if
-    /// any outcome is negative and an additive to the `x` if any predictor is negative).
+    /// any outcome is < 1 and an additive to the `x` if any predictor is < 1).
     ///
     /// Also sometimes called "growth".
     ///
@@ -581,7 +745,8 @@ pub mod arbitrary_linear_algebra {
     impl num_traits::Num for FloatWrapper {
         type FromStrRadixErr = rug::float::ParseFloatError;
         fn from_str_radix(s: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
-            rug::Float::parse_radix(s, radix as i32).map(|f| Self(rug::Float::with_val(HARDCODED_PRECISION, f)))
+            rug::Float::parse_radix(s, radix as i32)
+                .map(|f| Self(rug::Float::with_val(HARDCODED_PRECISION, f)))
         }
     }
     impl num_traits::Signed for FloatWrapper {
@@ -1036,36 +1201,37 @@ pub mod ols {
     ///
     /// Also panics if `degree + 1 > len`.
     pub fn polynomial(
-        x: impl Iterator<Item = f64> + Clone,
-        y: impl Iterator<Item = f64>,
+        predictors: impl Iterator<Item = f64> + Clone,
+        outcomes: impl Iterator<Item = f64>,
         len: usize,
         degree: usize,
     ) -> PolynomialCoefficients {
         fn polynomial_simple(
-            x: impl Iterator<Item = f64> + Clone,
-            y: impl Iterator<Item = f64>,
+            predictors: impl Iterator<Item = f64> + Clone,
+            outcomes: impl Iterator<Item = f64>,
             len: usize,
             degree: usize,
         ) -> PolynomialCoefficients {
-            let x_original = x.clone();
-            let mut x_iter = x;
+            let predictor_original = predictors.clone();
+            let mut predictor_iter = predictors;
 
-            let design = nalgebra::DMatrix::from_fn(len, degree + 1, |row: usize, column: usize| {
-                if column == 0 {
-                    1.0
-                } else if column == 1 {
-                    x_iter.next().unwrap()
-                } else {
-                    if row == 0 {
-                        x_iter = x_original.clone();
+            let design =
+                nalgebra::DMatrix::from_fn(len, degree + 1, |row: usize, column: usize| {
+                    if column == 0 {
+                        1.0
+                    } else if column == 1 {
+                        predictor_iter.next().unwrap()
+                    } else {
+                        if row == 0 {
+                            predictor_iter = predictor_original.clone();
+                        }
+                        predictor_iter.next().unwrap().powi(column as _)
                     }
-                    x_iter.next().unwrap().powi(column as _)
-                }
-            });
+                });
 
             let t = design.transpose();
-            let y = nalgebra::DMatrix::from_iterator(len, 1, y);
-            let result = ((&t * &design).try_inverse().unwrap() * &t) * y;
+            let outcomes = nalgebra::DMatrix::from_iterator(len, 1, outcomes);
+            let result = ((&t * &design).try_inverse().unwrap() * &t) * outcomes;
 
             PolynomialCoefficients {
                 coefficients: result.iter().copied().collect(),
@@ -1073,8 +1239,8 @@ pub mod ols {
         }
         #[cfg(feature = "arbitrary-precision")]
         fn polynomial_arbitrary(
-            x: impl Iterator<Item = f64> + Clone,
-            y: impl Iterator<Item = f64>,
+            predictors: impl Iterator<Item = f64> + Clone,
+            outcomes: impl Iterator<Item = f64>,
             len: usize,
             degree: usize,
         ) -> PolynomialCoefficients {
@@ -1082,35 +1248,35 @@ pub mod ols {
             let precision = (64 + degree * 2) as u32;
             // let precision = arbitrary_linear_algebra::HARDCODED_PRECISION;
             // let zero_limit = rug::Float::with_val(arbitrary_linear_algebra::HARDCODED_PRECISION, 1e-17f64).into();
-            println!("Precision {:?}", precision);
-            let x = x.map(|x| {
+            let predictors = predictors.map(|x| {
                 arbitrary_linear_algebra::FloatWrapper::from(rug::Float::with_val(precision, x))
             });
-            let y = y.map(|y| {
+            let outcomes = outcomes.map(|y| {
                 arbitrary_linear_algebra::FloatWrapper::from(rug::Float::with_val(precision, y))
             });
 
-            let x_original = x.clone();
-            let mut x_iter = x;
+            let predictor_original = predictors.clone();
+            let mut predictor_iter = predictors;
 
-            let design = nalgebra::DMatrix::from_fn(len, degree + 1, |row: usize, column: usize| {
-                if column == 0 {
-                    rug::Float::with_val(precision, 1.0_f64).into()
-                } else if column == 1 {
-                    x_iter.next().unwrap()
-                } else {
-                    if row == 0 {
-                        x_iter = x_original.clone();
+            let design =
+                nalgebra::DMatrix::from_fn(len, degree + 1, |row: usize, column: usize| {
+                    if column == 0 {
+                        rug::Float::with_val(precision, 1.0_f64).into()
+                    } else if column == 1 {
+                        predictor_iter.next().unwrap()
+                    } else {
+                        if row == 0 {
+                            predictor_iter = predictor_original.clone();
+                        }
+                        let mut f = predictor_iter.next().unwrap();
+                        f.0.pow_assign(column as u32);
+                        f
                     }
-                    let mut f = x_iter.next().unwrap();
-                    f.0.pow_assign(column as u32);
-                    f
-                }
-            });
+                });
 
             let t = design.transpose();
-            let y = nalgebra::DMatrix::from_iterator(len, 1, y);
-            let result = ((&t * &design).try_inverse().unwrap() * &t) * y;
+            let outcomes = nalgebra::DMatrix::from_iterator(len, 1, outcomes);
+            let result = ((&t * &design).try_inverse().unwrap() * &t) * outcomes;
 
             PolynomialCoefficients {
                 coefficients: result.iter().map(|f| f.0.to_f64()).collect(),
@@ -1121,9 +1287,9 @@ pub mod ols {
 
         #[cfg(feature = "arbitrary-precision")]
         if degree < 10 {
-            polynomial_simple(x, y, len, degree)
+            polynomial_simple(predictors, outcomes, len, degree)
         } else {
-            polynomial_arbitrary(x, y, len, degree)
+            polynomial_arbitrary(predictors, outcomes, len, degree)
         }
         #[cfg(not(feature = "arbitrary-precision"))]
         polynomial_simple(x, y, len, degree)

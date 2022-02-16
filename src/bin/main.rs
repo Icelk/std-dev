@@ -142,13 +142,13 @@ fn print_regression(
     if let Some(precision) = precision {
         println!(
             "Determination: {:.1$}, Predicted equation: {regression:.1$}",
-            regression.error(x, y, len),
+            regression.determination(x, y, len),
             precision,
         );
     } else {
         println!(
             "Determination: {:.4}, Predicted equation: {regression}",
-            regression.error(x, y, len),
+            regression.determination(x, y, len),
         );
     }
 }
@@ -175,10 +175,10 @@ fn main() {
     #[cfg(feature = "regression")]
     {
         app = app.subcommand(clap::App::new("regression")
-            .about("Find a equation which describes the input data. Tries to automatically determine the process if no arguments specifying it are provided. \
+            .about("Find a equation which describes the input data. Tries to automatically determine the model if no arguments specifying it are provided. \
             Predictors are the independent values (usually denoted `x`) from which we want a equation to get the \
             outcomes - the dependant variables, usually `y` or `f(x)`.")
-            .group(clap::ArgGroup::new("process")
+            .group(clap::ArgGroup::new("model")
                    .arg("degree")
                    .arg("linear")
                    .arg("power")
@@ -297,7 +297,7 @@ fn main() {
                             let coefficients = std_dev::regression::exponential_ols(&mut x, &mut y);
                             DynModel::new(coefficients)
                         }
-                    } else {
+                    } else if config.is_present("linear") || config.is_present("degree") {
                         let degree = {
                             if let Ok(degree) = config.value_of_t("degree") {
                                 degree
@@ -318,6 +318,10 @@ fn main() {
                         );
 
                         DynModel::new(coefficients)
+                    } else {
+                        let mut predictors: Vec<f64> = x_iter.clone().collect();
+                        let mut outcomes: Vec<f64> = y_iter.clone().collect();
+                        std_dev::regression::best_fit_ols(&mut predictors, &mut outcomes)
                     };
 
                 let p = matches
