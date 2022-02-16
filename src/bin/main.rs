@@ -303,7 +303,7 @@ fn main() {
                         DynModel::new(coefficients)
                     };
 
-                print_regression(&model, x_iter, y_iter, len);
+                print_regression(&model, x_iter.clone(), y_iter.clone(), len);
 
                 if config.is_present("plot") {
                     use poloto::prelude::*;

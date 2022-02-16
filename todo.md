@@ -8,6 +8,8 @@
 -   [ ] All statistical tools for unique lists (not `Cluster`s)
 -   [ ] Performance logging in regression calculations.
 -   [x] Plotting of data & regressions using [poloto](https://crates.io/crates/poloto) or [plotlib](https://crates.io/crates/plotlib)
+-   [ ] Option for other plot lib.
+-   [ ] Change precision in output.
 -   [ ] Arbitrary precision for high order polynomials.
 -   [ ] [RANSAC](https://en.wikipedia.org/wiki/Random_sample_consensus) implementation? Iterations = lg(1-chance of success) * (lg(number of data points) / lg(outliers in relation to total))
 -   [ ] [Non](https://en.wikipedia.org/wiki/K-nearest_neighbors_algorithm)-[parametric](https://en.wikipedia.org/wiki/Local_regression) regression? 
