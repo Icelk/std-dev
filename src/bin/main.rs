@@ -136,12 +136,21 @@ fn print_regression(
     x: impl Iterator<Item = f64>,
     y: impl Iterator<Item = f64> + Clone,
     len: usize,
+    precision: Option<usize>,
 ) {
     use std_dev::regression::Determination;
-    println!(
-        "Determination: {}, Predicted equation: {regression}",
-        regression.error(x, y, len)
-    );
+    if let Some(precision) = precision {
+        println!(
+            "Determination: {:.1$}, Predicted equation: {regression:.1$}",
+            regression.error(x, y, len),
+            precision,
+        );
+    } else {
+        println!(
+            "Determination: {:.4}, Predicted equation: {regression}",
+            regression.error(x, y, len),
+        );
+    }
 }
 
 fn main() {
@@ -153,14 +162,22 @@ fn main() {
             .short('m')
             .long("multiline")
             .help("Accept multiple lines as one input. Two consecutive newlines is treated as the series separator. When not doing regression analysis the second 'column' is the count of the first. Acts more like CSV.")
+        )
+        .arg(Arg::new("precision")
+            .short('n')
+            .long("precision")
+            .help("Sets the precision of the output. When this isn't set, Rust decides how many digits to print. \
+                  The determination will be 4 decimal places long. When this is set, all numbers are rounded.")
+            .takes_value(true)
+            .validator(|v| v.parse::<usize>().map_err(|_| "precision needs to be a positive integer".to_owned()))
         );
 
     #[cfg(feature = "regression")]
     {
         app = app.subcommand(clap::App::new("regression")
             .about("Find a equation which describes the input data. Tries to automatically determine the process if no arguments specifying it are provided. \
-            **Predictors** are the independent values (usually denoted `x`) from which we want a equation to get the \
-            **outcomes** - the dependant variables, usually `y` or `f(x)`.")
+            Predictors are the independent values (usually denoted `x`) from which we want a equation to get the \
+            outcomes - the dependant variables, usually `y` or `f(x)`.")
             .group(clap::ArgGroup::new("process")
                    .arg("order")
                    .arg("linear")
@@ -303,7 +320,11 @@ fn main() {
                         DynModel::new(coefficients)
                     };
 
-                print_regression(&model, x_iter.clone(), y_iter.clone(), len);
+                let p = matches
+                    .value_of("precision")
+                    .map(|s| s.parse::<usize>().expect("we check this using clap"));
+
+                print_regression(&model, x_iter.clone(), y_iter.clone(), len, p);
 
                 if config.is_present("plot") {
                     use poloto::prelude::*;
@@ -341,7 +362,7 @@ fn main() {
 
                     let mut plot = poloto::data();
                     plot.line(
-                        format!("{model:.2}"),
+                        format!("{model:.*}", p.unwrap_or(2)),
                         x.filter_map(|x| {
                             let y = model.predict_outcome(x);
                             Some((
