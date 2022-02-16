@@ -179,17 +179,17 @@ fn main() {
             Predictors are the independent values (usually denoted `x`) from which we want a equation to get the \
             outcomes - the dependant variables, usually `y` or `f(x)`.")
             .group(clap::ArgGroup::new("process")
-                   .arg("order")
+                   .arg("degree")
                    .arg("linear")
                    .arg("power")
                    .arg("exponential")
             )
-            .arg(Arg::new("order")
-                .short('o')
-                .long("order")
-                .help("Order of polynomial.")
+            .arg(Arg::new("degree")
+                .short('d')
+                .long("degree")
+                .help("Degree of polynomial.")
                 .takes_value(true)
-                .validator(|o| o.parse::<usize>().map_err(|_| "Order must be an integer".to_owned()))
+                .validator(|o| o.parse::<usize>().map_err(|_| "Degree must be an integer".to_owned()))
             )
             .arg(Arg::new("linear")
                  .short('l')
@@ -298,15 +298,15 @@ fn main() {
                             DynModel::new(coefficients)
                         }
                     } else {
-                        let order = {
-                            if let Ok(order) = config.value_of_t("order") {
-                                order
+                        let degree = {
+                            if let Ok(degree) = config.value_of_t("degree") {
+                                degree
                             } else {
                                 1
                             }
                         };
-                        if order + 1 > len {
-                            eprintln!("Order of polynomial is too large; add more datapoints.");
+                        if degree + 1 > len {
+                            eprintln!("Degree of polynomial is too large; add more datapoints.");
                             continue 'main;
                         }
 
@@ -314,7 +314,7 @@ fn main() {
                             x_iter.clone(),
                             y_iter.clone(),
                             len,
-                            order,
+                            degree,
                         );
 
                         DynModel::new(coefficients)
@@ -341,7 +341,7 @@ fn main() {
                         })
                         .unwrap_or(500);
                     if config.is_present("linear")
-                        || config.value_of("order").map_or(false, |o| o == "1")
+                        || config.value_of("degree").map_or(false, |o| o == "1")
                     {
                         num_samples = 2;
                     }

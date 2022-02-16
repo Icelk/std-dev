@@ -959,7 +959,7 @@ pub mod ols {
         }
     }
 
-    /// The length of the inner vector is `order + 1`.
+    /// The length of the inner vector is `degree + 1`.
     ///
     /// The inner list is in order of smallest exponent to largest: `[0, 2, 1]` means `y = 1x² + 2x + 0`.
     #[derive(Debug)]
@@ -975,7 +975,7 @@ pub mod ols {
     impl Display for PolynomialCoefficients {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             let mut first = true;
-            for (order, mut coefficient) in self.coefficients.iter().copied().enumerate().rev() {
+            for (degree, mut coefficient) in self.coefficients.iter().copied().enumerate().rev() {
                 if !first {
                     if coefficient.is_sign_positive() {
                         write!(f, " + ")?;
@@ -987,10 +987,10 @@ pub mod ols {
 
                 let p = f.precision().unwrap_or(5);
 
-                match order {
+                match degree {
                     0 => write!(f, "{coefficient:.*}", p)?,
                     1 => write!(f, "{coefficient:.*}x", p)?,
-                    _ => write!(f, "{coefficient:.0$}x^{order:.0$}", p)?,
+                    _ => write!(f, "{coefficient:.0$}x^{degree:.0$}", p)?,
                 }
 
                 first = false;
@@ -1011,9 +1011,9 @@ pub mod ols {
             let mut out = rug::Float::with_val(precision, 0.0f64);
             let original_predictor = predictor;
             let mut predictor = rug::Float::with_val(precision, predictor);
-            for (order, coefficient) in self.coefficients.iter().copied().enumerate() {
+            for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
                 // assign to never create a new value.
-                predictor.pow_assign(order as u32);
+                predictor.pow_assign(degree as u32);
                 predictor.mul_assign(coefficient);
                 out += &predictor;
                 predictor.assign(original_predictor)
@@ -1023,8 +1023,8 @@ pub mod ols {
         #[cfg(not(feature = "arbitrary-precision"))]
         fn predict_outcome(&self, predictor: f64) -> f64 {
             let mut out = 0.0;
-            for (order, coefficient) in self.coefficients.iter().copied().enumerate() {
-                out += predictor.powi(order as i32) * coefficient;
+            for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
+                out += predictor.powi(degree as i32) * coefficient;
             }
             out
         }
@@ -1034,23 +1034,23 @@ pub mod ols {
     ///
     /// Panics if either `x` or `y` don't have the length `len`.
     ///
-    /// Also panics if `order + 1 > len`.
+    /// Also panics if `degree + 1 > len`.
     pub fn polynomial(
         x: impl Iterator<Item = f64> + Clone,
         y: impl Iterator<Item = f64>,
         len: usize,
-        order: usize,
+        degree: usize,
     ) -> PolynomialCoefficients {
         fn polynomial_simple(
             x: impl Iterator<Item = f64> + Clone,
             y: impl Iterator<Item = f64>,
             len: usize,
-            order: usize,
+            degree: usize,
         ) -> PolynomialCoefficients {
             let x_original = x.clone();
             let mut x_iter = x;
 
-            let design = nalgebra::DMatrix::from_fn(len, order + 1, |row: usize, column: usize| {
+            let design = nalgebra::DMatrix::from_fn(len, degree + 1, |row: usize, column: usize| {
                 if column == 0 {
                     1.0
                 } else if column == 1 {
@@ -1076,10 +1076,10 @@ pub mod ols {
             x: impl Iterator<Item = f64> + Clone,
             y: impl Iterator<Item = f64>,
             len: usize,
-            order: usize,
+            degree: usize,
         ) -> PolynomialCoefficients {
             use rug::ops::PowAssign;
-            let precision = (64 + order * 2) as u32;
+            let precision = (64 + degree * 2) as u32;
             // let precision = arbitrary_linear_algebra::HARDCODED_PRECISION;
             // let zero_limit = rug::Float::with_val(arbitrary_linear_algebra::HARDCODED_PRECISION, 1e-17f64).into();
             println!("Precision {:?}", precision);
@@ -1093,7 +1093,7 @@ pub mod ols {
             let x_original = x.clone();
             let mut x_iter = x;
 
-            let design = nalgebra::DMatrix::from_fn(len, order + 1, |row: usize, column: usize| {
+            let design = nalgebra::DMatrix::from_fn(len, degree + 1, |row: usize, column: usize| {
                 if column == 0 {
                     rug::Float::with_val(precision, 1.0_f64).into()
                 } else if column == 1 {
@@ -1117,15 +1117,15 @@ pub mod ols {
             }
         }
 
-        debug_assert!(order < len, "order + 1 must be less than or equal to len");
+        debug_assert!(degree < len, "degree + 1 must be less than or equal to len");
 
         #[cfg(feature = "arbitrary-precision")]
-        if order < 10 {
-            polynomial_simple(x, y, len, order)
+        if degree < 10 {
+            polynomial_simple(x, y, len, degree)
         } else {
-            polynomial_arbitrary(x, y, len, order)
+            polynomial_arbitrary(x, y, len, degree)
         }
         #[cfg(not(feature = "arbitrary-precision"))]
-        polynomial_simple(x, y, len, order)
+        polynomial_simple(x, y, len, degree)
     }
 }

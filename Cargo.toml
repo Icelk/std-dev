@@ -35,7 +35,7 @@ default = ["bin", "pretty", "regression", "arbitrary-precision"]
 regression = ["nalgebra", "simba"]
 # Arbitrary precision for regression.
 #
-# Increases max order of polynomial (with good results).
+# Increases max degree of polynomial (with good results).
 # Without this feature, it's basically limited to 10 degrees.
 arbitrary-precision = ["rug", "regression", "num-traits", "approx"]
 

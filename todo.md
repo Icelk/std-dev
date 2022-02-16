@@ -1,5 +1,5 @@
 -   [x] Change precision in output.
--   [x] Arbitrary precision for high order polynomials.
+-   [x] Arbitrary precision for high degree polynomials.
 -   [ ] Automatically choose process
 -   [x] Linearization - solve all other.
 -   [x] Fix input handling? (arrow up, sides, don't spam prompt when pasting (or don't have prompt on multiline?))
