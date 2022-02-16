@@ -390,6 +390,543 @@ pub mod derived {
     }
 }
 
+/// This module enables the use of [`rug::Float`] inside of [`nalgebra`].
+///
+/// Many functions are not implemented. PRs are welcome.
+#[cfg(feature = "arbitrary-precision")]
+pub mod arbitrary_linear_algebra {
+    use std::fmt::{self, Display};
+    use std::ops::{
+        Add, AddAssign, Deref, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
+    };
+
+    use nalgebra::{ComplexField, RealField};
+    use rug::Assign;
+
+    pub const HARDCODED_PRECISION: u32 = 256;
+    #[derive(Debug, Clone, PartialEq, PartialOrd)]
+    pub struct FloatWrapper(pub rug::Float);
+    impl From<rug::Float> for FloatWrapper {
+        fn from(f: rug::Float) -> Self {
+            Self(f)
+        }
+    }
+
+    impl simba::scalar::SupersetOf<f64> for FloatWrapper {
+        fn is_in_subset(&self) -> bool {
+            self.0.prec() <= 53
+        }
+        fn to_subset(&self) -> Option<f64> {
+            if simba::scalar::SupersetOf::<f64>::is_in_subset(self) {
+                Some(self.0.to_f64())
+            } else {
+                None
+            }
+        }
+        fn to_subset_unchecked(&self) -> f64 {
+            self.0.to_f64()
+        }
+        fn from_subset(element: &f64) -> Self {
+            rug::Float::with_val(HARDCODED_PRECISION, element).into()
+        }
+    }
+    impl simba::scalar::SubsetOf<Self> for FloatWrapper {
+        fn to_superset(&self) -> Self {
+            self.clone()
+        }
+
+        fn from_superset_unchecked(element: &Self) -> Self {
+            element.clone()
+        }
+
+        fn is_in_subset(_element: &Self) -> bool {
+            true
+        }
+    }
+    impl num_traits::cast::FromPrimitive for FloatWrapper {
+        fn from_i64(n: i64) -> Option<Self> {
+            Some(rug::Float::with_val(HARDCODED_PRECISION, n).into())
+        }
+        fn from_u64(n: u64) -> Option<Self> {
+            Some(rug::Float::with_val(HARDCODED_PRECISION, n).into())
+        }
+    }
+    impl Display for FloatWrapper {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.0.fmt(f)
+        }
+    }
+    impl simba::simd::SimdValue for FloatWrapper {
+        type Element = FloatWrapper;
+        type SimdBool = bool;
+
+        #[inline(always)]
+        fn lanes() -> usize {
+            1
+        }
+
+        #[inline(always)]
+        fn splat(val: Self::Element) -> Self {
+            val
+        }
+
+        #[inline(always)]
+        fn extract(&self, _: usize) -> Self::Element {
+            self.clone()
+        }
+
+        #[inline(always)]
+        unsafe fn extract_unchecked(&self, _: usize) -> Self::Element {
+            self.clone()
+        }
+
+        #[inline(always)]
+        fn replace(&mut self, _: usize, val: Self::Element) {
+            *self = val
+        }
+
+        #[inline(always)]
+        unsafe fn replace_unchecked(&mut self, _: usize, val: Self::Element) {
+            *self = val
+        }
+
+        #[inline(always)]
+        fn select(self, cond: Self::SimdBool, other: Self) -> Self {
+            if cond {
+                self
+            } else {
+                other
+            }
+        }
+    }
+    impl Neg for FloatWrapper {
+        type Output = Self;
+        fn neg(self) -> Self::Output {
+            Self(-self.0)
+        }
+    }
+    impl Add for FloatWrapper {
+        type Output = Self;
+        fn add(mut self, rhs: Self) -> Self::Output {
+            self.0 += rhs.0;
+            self
+        }
+    }
+    impl Sub for FloatWrapper {
+        type Output = Self;
+        fn sub(mut self, rhs: Self) -> Self::Output {
+            self.0 -= rhs.0;
+            self
+        }
+    }
+    impl Mul for FloatWrapper {
+        type Output = Self;
+        fn mul(mut self, rhs: Self) -> Self::Output {
+            self.0 *= rhs.0;
+            self
+        }
+    }
+    impl Div for FloatWrapper {
+        type Output = Self;
+        fn div(mut self, rhs: Self) -> Self::Output {
+            self.0 /= rhs.0;
+            self
+        }
+    }
+    impl Rem for FloatWrapper {
+        type Output = Self;
+        fn rem(mut self, rhs: Self) -> Self::Output {
+            self.0 %= rhs.0;
+            self
+        }
+    }
+    impl AddAssign for FloatWrapper {
+        fn add_assign(&mut self, rhs: Self) {
+            self.0 += rhs.0;
+        }
+    }
+    impl SubAssign for FloatWrapper {
+        fn sub_assign(&mut self, rhs: Self) {
+            self.0 -= rhs.0;
+        }
+    }
+    impl MulAssign for FloatWrapper {
+        fn mul_assign(&mut self, rhs: Self) {
+            self.0 *= rhs.0;
+        }
+    }
+    impl DivAssign for FloatWrapper {
+        fn div_assign(&mut self, rhs: Self) {
+            self.0 /= rhs.0;
+        }
+    }
+    impl RemAssign for FloatWrapper {
+        fn rem_assign(&mut self, rhs: Self) {
+            self.0 %= rhs.0;
+        }
+    }
+    impl num_traits::Zero for FloatWrapper {
+        fn zero() -> Self {
+            Self(rug::Float::with_val(HARDCODED_PRECISION, 0.0))
+        }
+        fn is_zero(&self) -> bool {
+            self.0 == 0.0
+        }
+    }
+    impl num_traits::One for FloatWrapper {
+        fn one() -> Self {
+            Self(rug::Float::with_val(HARDCODED_PRECISION, 1.0))
+        }
+    }
+    impl num_traits::Num for FloatWrapper {
+        type FromStrRadixErr = rug::float::ParseFloatError;
+        fn from_str_radix(s: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
+            rug::Float::parse_radix(s, radix as i32).map(|f| Self(rug::Float::with_val(HARDCODED_PRECISION, f)))
+        }
+    }
+    impl num_traits::Signed for FloatWrapper {
+        fn abs(&self) -> Self {
+            self.0.as_abs().to_owned().into()
+        }
+        fn abs_sub(&self, other: &Self) -> Self {
+            if self.0 <= other.0 {
+                rug::Float::with_val(self.prec(), 0.0f64).into()
+            } else {
+                Self(self.0.clone() - &other.0)
+            }
+        }
+        fn signum(&self) -> Self {
+            self.0.clone().signum().into()
+        }
+        fn is_positive(&self) -> bool {
+            self.0.is_sign_positive()
+        }
+        fn is_negative(&self) -> bool {
+            self.0.is_sign_negative()
+        }
+    }
+    impl approx::AbsDiffEq for FloatWrapper {
+        type Epsilon = Self;
+        fn default_epsilon() -> Self::Epsilon {
+            rug::Float::with_val(HARDCODED_PRECISION, f64::EPSILON).into()
+        }
+        fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
+            if self.0 == other.0 {
+                return true;
+            }
+            if self.0.is_infinite() || other.0.is_infinite() {
+                return false;
+            }
+            let mut buffer = self.clone();
+            buffer.0.assign(&self.0 - &other.0);
+            buffer.0.abs_mut();
+            let abs_diff = buffer;
+            abs_diff.0 <= epsilon.0
+        }
+    }
+    impl approx::RelativeEq for FloatWrapper {
+        fn default_max_relative() -> Self::Epsilon {
+            rug::Float::with_val(HARDCODED_PRECISION, f64::EPSILON).into()
+        }
+        fn relative_eq(
+            &self,
+            other: &Self,
+            epsilon: Self::Epsilon,
+            max_relative: Self::Epsilon,
+        ) -> bool {
+            if self.0 == other.0 {
+                return true;
+            }
+            if self.0.is_infinite() || other.0.is_infinite() {
+                return false;
+            }
+            let mut buffer = self.clone();
+            buffer.0.assign(&self.0 - &other.0);
+            buffer.0.abs_mut();
+            let abs_diff = buffer;
+            if abs_diff.0 <= epsilon.0 {
+                return true;
+            }
+
+            let abs_self = self.0.as_abs();
+            let abs_other = other.0.as_abs();
+
+            let largest = if *abs_other > *abs_self {
+                &*abs_other
+            } else {
+                &*abs_self
+            };
+
+            abs_diff.0 <= largest * max_relative.0
+        }
+    }
+    impl approx::UlpsEq for FloatWrapper {
+        fn default_max_ulps() -> u32 {
+            // Should not be used, see comment below.
+            4
+        }
+        fn ulps_eq(&self, other: &Self, epsilon: Self::Epsilon, _max_ulps: u32) -> bool {
+            // taking the difference of the bits makes no sense when using arbitrary floats.
+            approx::AbsDiffEq::abs_diff_eq(&self, &other, epsilon)
+        }
+    }
+    impl nalgebra::Field for FloatWrapper {}
+    impl RealField for FloatWrapper {
+        fn is_sign_positive(&self) -> bool {
+            todo!()
+        }
+
+        fn is_sign_negative(&self) -> bool {
+            todo!()
+        }
+
+        fn copysign(self, _sign: Self) -> Self {
+            todo!()
+        }
+
+        fn max(self, _other: Self) -> Self {
+            todo!()
+        }
+
+        fn min(self, _other: Self) -> Self {
+            todo!()
+        }
+
+        fn clamp(self, _min: Self, _max: Self) -> Self {
+            todo!()
+        }
+
+        fn atan2(self, _other: Self) -> Self {
+            todo!()
+        }
+
+        fn min_value() -> Option<Self> {
+            todo!()
+        }
+
+        fn max_value() -> Option<Self> {
+            todo!()
+        }
+
+        fn pi() -> Self {
+            todo!()
+        }
+
+        fn two_pi() -> Self {
+            todo!()
+        }
+
+        fn frac_pi_2() -> Self {
+            todo!()
+        }
+
+        fn frac_pi_3() -> Self {
+            todo!()
+        }
+
+        fn frac_pi_4() -> Self {
+            todo!()
+        }
+
+        fn frac_pi_6() -> Self {
+            todo!()
+        }
+
+        fn frac_pi_8() -> Self {
+            todo!()
+        }
+
+        fn frac_1_pi() -> Self {
+            todo!()
+        }
+
+        fn frac_2_pi() -> Self {
+            todo!()
+        }
+
+        fn frac_2_sqrt_pi() -> Self {
+            todo!()
+        }
+
+        fn e() -> Self {
+            todo!()
+        }
+
+        fn log2_e() -> Self {
+            todo!()
+        }
+
+        fn log10_e() -> Self {
+            todo!()
+        }
+
+        fn ln_2() -> Self {
+            todo!()
+        }
+
+        fn ln_10() -> Self {
+            todo!()
+        }
+    }
+    impl ComplexField for FloatWrapper {
+        type RealField = Self;
+
+        fn from_real(re: Self::RealField) -> Self {
+            re
+        }
+        fn real(self) -> Self::RealField {
+            self
+        }
+        fn imaginary(mut self) -> Self::RealField {
+            self.0.assign(0.0);
+            self
+        }
+        fn modulus(self) -> Self::RealField {
+            self.abs()
+        }
+        fn modulus_squared(self) -> Self::RealField {
+            self.0.square().into()
+        }
+        fn argument(mut self) -> Self::RealField {
+            if self.0.is_sign_positive() || self.0.is_zero() {
+                self.0.assign(0.0);
+                self
+            } else {
+                Self::pi()
+            }
+        }
+        fn norm1(self) -> Self::RealField {
+            self.abs()
+        }
+        fn scale(self, factor: Self::RealField) -> Self {
+            self.0.mul(factor.0).into()
+        }
+        fn unscale(self, factor: Self::RealField) -> Self {
+            self.0.div(factor.0).into()
+        }
+        fn floor(self) -> Self {
+            todo!()
+        }
+        fn ceil(self) -> Self {
+            todo!()
+        }
+        fn round(self) -> Self {
+            todo!()
+        }
+        fn trunc(self) -> Self {
+            todo!()
+        }
+        fn fract(self) -> Self {
+            todo!()
+        }
+        fn mul_add(self, _a: Self, _b: Self) -> Self {
+            todo!()
+        }
+        fn abs(self) -> Self::RealField {
+            self.0.abs().into()
+        }
+        fn hypot(self, other: Self) -> Self::RealField {
+            self.0.hypot(&other.0).into()
+        }
+        fn recip(self) -> Self {
+            todo!()
+        }
+        fn conjugate(self) -> Self {
+            self
+        }
+        fn sin(self) -> Self {
+            todo!()
+        }
+        fn cos(self) -> Self {
+            todo!()
+        }
+        fn sin_cos(self) -> (Self, Self) {
+            todo!()
+        }
+        fn tan(self) -> Self {
+            todo!()
+        }
+        fn asin(self) -> Self {
+            todo!()
+        }
+        fn acos(self) -> Self {
+            todo!()
+        }
+        fn atan(self) -> Self {
+            todo!()
+        }
+        fn sinh(self) -> Self {
+            todo!()
+        }
+        fn cosh(self) -> Self {
+            todo!()
+        }
+        fn tanh(self) -> Self {
+            todo!()
+        }
+        fn asinh(self) -> Self {
+            todo!()
+        }
+        fn acosh(self) -> Self {
+            todo!()
+        }
+        fn atanh(self) -> Self {
+            todo!()
+        }
+        fn log(self, _base: Self::RealField) -> Self {
+            todo!()
+        }
+        fn log2(self) -> Self {
+            todo!()
+        }
+        fn log10(self) -> Self {
+            todo!()
+        }
+        fn ln(self) -> Self {
+            todo!()
+        }
+        fn ln_1p(self) -> Self {
+            todo!()
+        }
+        fn sqrt(self) -> Self {
+            self.0.sqrt().into()
+        }
+        fn exp(self) -> Self {
+            todo!()
+        }
+        fn exp2(self) -> Self {
+            todo!()
+        }
+        fn exp_m1(self) -> Self {
+            todo!()
+        }
+        fn powi(self, _n: i32) -> Self {
+            todo!()
+        }
+        fn powf(self, _n: Self::RealField) -> Self {
+            todo!()
+        }
+        fn powc(self, _n: Self) -> Self {
+            todo!()
+        }
+        fn cbrt(self) -> Self {
+            todo!()
+        }
+        fn try_sqrt(self) -> Option<Self> {
+            todo!()
+        }
+        fn is_finite(&self) -> bool {
+            self.0.is_finite()
+        }
+    }
+    impl Deref for FloatWrapper {
+        type Target = rug::Float;
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+}
+
 /// [Ordinary least squares](https://en.wikipedia.org/wiki/Ordinary_least_squares) implementation.
 ///
 /// # Implementation details
@@ -463,6 +1000,27 @@ pub mod ols {
     }
 
     impl Predictive for PolynomialCoefficients {
+        #[cfg(feature = "arbitrary-precision")]
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            use rug::ops::PowAssign;
+            use rug::Assign;
+            use std::ops::MulAssign;
+
+            let precision = (64 + self.len() * 2) as u32;
+            // let precision = arbitrary_linear_algebra::HARDCODED_PRECISION;
+            let mut out = rug::Float::with_val(precision, 0.0f64);
+            let original_predictor = predictor;
+            let mut predictor = rug::Float::with_val(precision, predictor);
+            for (order, coefficient) in self.coefficients.iter().copied().enumerate() {
+                // assign to never create a new value.
+                predictor.pow_assign(order as u32);
+                predictor.mul_assign(coefficient);
+                out += &predictor;
+                predictor.assign(original_predictor)
+            }
+            out.to_f64()
+        }
+        #[cfg(not(feature = "arbitrary-precision"))]
         fn predict_outcome(&self, predictor: f64) -> f64 {
             let mut out = 0.0;
             for (order, coefficient) in self.coefficients.iter().copied().enumerate() {
@@ -478,31 +1036,96 @@ pub mod ols {
     ///
     /// Also panics if `order + 1 > len`.
     pub fn polynomial(
-        x: impl Iterator<Item = f64>,
+        x: impl Iterator<Item = f64> + Clone,
         y: impl Iterator<Item = f64>,
         len: usize,
         order: usize,
     ) -> PolynomialCoefficients {
-        debug_assert!(order < len, "order + 1 must be less than or equal to len");
-        // `TODO`: Save a copy of the iterator, then iterate over it in the from_fn call.
-        // When a new column is began, start again.
-        let x: Vec<_> = x.collect();
-        let design = nalgebra::DMatrix::from_fn(len, order + 1, |row: usize, column: usize| {
-            if column == 0 {
-                1.0
-            } else if column == 1 {
-                x[row]
-            } else {
-                x[row].powi(column as _)
+        fn polynomial_simple(
+            x: impl Iterator<Item = f64> + Clone,
+            y: impl Iterator<Item = f64>,
+            len: usize,
+            order: usize,
+        ) -> PolynomialCoefficients {
+            let x_original = x.clone();
+            let mut x_iter = x;
+
+            let design = nalgebra::DMatrix::from_fn(len, order + 1, |row: usize, column: usize| {
+                if column == 0 {
+                    1.0
+                } else if column == 1 {
+                    x_iter.next().unwrap()
+                } else {
+                    if row == 0 {
+                        x_iter = x_original.clone();
+                    }
+                    x_iter.next().unwrap().powi(column as _)
+                }
+            });
+
+            let t = design.transpose();
+            let y = nalgebra::DMatrix::from_iterator(len, 1, y);
+            let result = ((&t * &design).try_inverse().unwrap() * &t) * y;
+
+            PolynomialCoefficients {
+                coefficients: result.iter().copied().collect(),
             }
-        });
-
-        let t = design.transpose();
-        let y = nalgebra::DMatrix::from_iterator(len, 1, y);
-        let result = ((&t * &design).try_inverse().unwrap() * &t) * y;
-
-        PolynomialCoefficients {
-            coefficients: result.iter().copied().collect(),
         }
+        #[cfg(feature = "arbitrary-precision")]
+        fn polynomial_arbitrary(
+            x: impl Iterator<Item = f64> + Clone,
+            y: impl Iterator<Item = f64>,
+            len: usize,
+            order: usize,
+        ) -> PolynomialCoefficients {
+            use rug::ops::PowAssign;
+            let precision = (64 + order * 2) as u32;
+            // let precision = arbitrary_linear_algebra::HARDCODED_PRECISION;
+            // let zero_limit = rug::Float::with_val(arbitrary_linear_algebra::HARDCODED_PRECISION, 1e-17f64).into();
+            println!("Precision {:?}", precision);
+            let x = x.map(|x| {
+                arbitrary_linear_algebra::FloatWrapper::from(rug::Float::with_val(precision, x))
+            });
+            let y = y.map(|y| {
+                arbitrary_linear_algebra::FloatWrapper::from(rug::Float::with_val(precision, y))
+            });
+
+            let x_original = x.clone();
+            let mut x_iter = x;
+
+            let design = nalgebra::DMatrix::from_fn(len, order + 1, |row: usize, column: usize| {
+                if column == 0 {
+                    rug::Float::with_val(precision, 1.0_f64).into()
+                } else if column == 1 {
+                    x_iter.next().unwrap()
+                } else {
+                    if row == 0 {
+                        x_iter = x_original.clone();
+                    }
+                    let mut f = x_iter.next().unwrap();
+                    f.0.pow_assign(column as u32);
+                    f
+                }
+            });
+
+            let t = design.transpose();
+            let y = nalgebra::DMatrix::from_iterator(len, 1, y);
+            let result = ((&t * &design).try_inverse().unwrap() * &t) * y;
+
+            PolynomialCoefficients {
+                coefficients: result.iter().map(|f| f.0.to_f64()).collect(),
+            }
+        }
+
+        debug_assert!(order < len, "order + 1 must be less than or equal to len");
+
+        #[cfg(feature = "arbitrary-precision")]
+        if order < 10 {
+            polynomial_simple(x, y, len, order)
+        } else {
+            polynomial_arbitrary(x, y, len, order)
+        }
+        #[cfg(not(feature = "arbitrary-precision"))]
+        polynomial_simple(x, y, len, order)
     }
 }
