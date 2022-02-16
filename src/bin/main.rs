@@ -1,6 +1,7 @@
 use std::env;
 use std::fmt::Display;
 use std::io::{stdin, BufRead, Write};
+use std::path::Path;
 use std::process::exit;
 use std::str::FromStr;
 use std::time::Instant;
@@ -8,6 +9,7 @@ use std::time::Instant;
 use clap::Arg;
 
 pub use std_dev;
+use std_dev::regression::{DynModel, Predictive};
 
 fn parse<T: FromStr>(s: &str) -> Option<T> {
     if let Ok(v) = s.parse() {
@@ -130,11 +132,12 @@ fn input(
 
 #[cfg(feature = "regression")]
 fn print_regression(
-    regression: impl std_dev::regression::Predictive + Display,
+    regression: &(impl std_dev::regression::Predictive + Display),
     x: impl Iterator<Item = f64>,
     y: impl Iterator<Item = f64> + Clone,
     len: usize,
 ) {
+    use std_dev::regression::Determination;
     println!(
         "Determination: {}, Predicted equation: {regression}",
         regression.error(x, y, len)
@@ -190,6 +193,22 @@ fn main() {
                 .help("Tries to fit a curve defined by the equation `a * b^x` to the data. \
                 If any of the predictors are below 1, x becomes (x+c), where c is an offset to the predictors. This is due to the arithmetic issue of taking the log of negative numbers and 0. \
                 A negative addition term will be appended if any of the outcomes are below 1.")
+            )
+            .arg(Arg::new("plot")
+                .long("plot")
+                .help("Plots the regression and input variables in a SVG.")
+            )
+            .arg(Arg::new("plot_filename")
+                .long("plot-out")
+                .help("File name (without extension) for SVG plot.")
+                .takes_value(true)
+                .requires("plot")
+            )
+            .arg(Arg::new("plot_samples")
+                .long("plot-samples")
+                .help("Count of sample points when drawing the curve. Always set to 2 for linear regressions.")
+                .takes_value(true)
+                .requires("plot")
             )
         );
     }
@@ -247,40 +266,115 @@ fn main() {
                 let x_iter = values.iter().map(|d| d[0]);
                 let y_iter = values.iter().map(|d| d[1]);
 
-                if config.is_present("power") || config.is_present("exponential") {
-                    let mut x: Vec<f64> = x_iter.clone().collect();
-                    let mut y: Vec<f64> = y_iter.clone().collect();
+                let model: DynModel =
+                    if config.is_present("power") || config.is_present("exponential") {
+                        let mut x: Vec<f64> = x_iter.clone().collect();
+                        let mut y: Vec<f64> = y_iter.clone().collect();
 
-                    if config.is_present("power") {
-                        let coefficients = std_dev::regression::power_ols(&mut x, &mut y);
-                        print_regression(coefficients, x_iter, y_iter, len);
-                    } else {
-                        assert!(config.is_present("exponential"));
-
-                        let coefficients = std_dev::regression::exponential_ols(&mut x, &mut y);
-                        print_regression(coefficients, x_iter, y_iter, len);
-                    }
-                } else {
-                    let order = {
-                        if let Ok(order) = config.value_of_t("order") {
-                            order
+                        if config.is_present("power") {
+                            let coefficients = std_dev::regression::power_ols(&mut x, &mut y);
+                            DynModel::new(coefficients)
                         } else {
-                            1
+                            assert!(config.is_present("exponential"));
+
+                            let coefficients = std_dev::regression::exponential_ols(&mut x, &mut y);
+                            DynModel::new(coefficients)
                         }
+                    } else {
+                        let order = {
+                            if let Ok(order) = config.value_of_t("order") {
+                                order
+                            } else {
+                                1
+                            }
+                        };
+                        if order + 1 > len {
+                            eprintln!("Order of polynomial is too large; add more datapoints.");
+                            continue 'main;
+                        }
+
+                        let coefficients = std_dev::regression::ols::polynomial(
+                            x_iter.clone(),
+                            y_iter.clone(),
+                            len,
+                            order,
+                        );
+
+                        DynModel::new(coefficients)
                     };
-                    if order + 1 > len {
-                        eprintln!("Order of polynomial is too large; add more datapoints.");
-                        continue 'main;
+
+                print_regression(&model, x_iter, y_iter, len);
+
+                if config.is_present("plot") {
+                    use poloto::prelude::*;
+
+                    let mut num_samples = config
+                        .value_of("plot_samples")
+                        .map(|s| {
+                            if let Ok(i) = s.parse() {
+                                i
+                            } else {
+                                eprintln!("You must supply an integer to `plot-samples`.");
+                                exit(1)
+                            }
+                        })
+                        .unwrap_or(500);
+                    if config.is_present("linear")
+                        || config.value_of("order").map_or(false, |o| o == "1")
+                    {
+                        num_samples = 2;
                     }
 
-                    let coefficients = std_dev::regression::ols::polynomial(
-                        x_iter.clone(),
-                        y_iter.clone(),
-                        len,
-                        order,
-                    );
+                    let x_min = x_iter.clone().map(std_dev::F64OrdHash).min().unwrap().0;
+                    let x_max = x_iter.clone().map(std_dev::F64OrdHash).max().unwrap().0;
+                    let y_min = y_iter.clone().map(std_dev::F64OrdHash).min().unwrap().0;
+                    let y_max = y_iter.clone().map(std_dev::F64OrdHash).max().unwrap().0;
+                    let range = x_max - x_min;
+                    let x_min = x_min - range * 0.1;
+                    let range = range * 1.2;
+                    let y_min = y_min - range * 0.2;
+                    let y_max = y_max + range * 0.2;
 
-                    print_regression(coefficients, x_iter, y_iter, len);
+                    let x = (0..num_samples)
+                        .into_iter()
+                        .map(|current| (current as f64 / (num_samples - 1) as f64) * range + x_min);
+
+                    let mut plot = poloto::data();
+                    plot.line(
+                        format!("{model:.2}"),
+                        x.filter_map(|x| {
+                            let y = model.predict_outcome(x);
+                            Some((
+                                x,
+                                if (y_min..y_max).contains(&y) {
+                                    y
+                                } else {
+                                    return None;
+                                },
+                            ))
+                        }),
+                    );
+                    plot.scatter("input", x_iter.clone().zip(y_iter.clone()));
+
+                    let mut plotter = plot.build().plot("Regression", "predictors", "outcomes");
+                    let data = poloto::disp(|a| plotter.simple_theme(a));
+                    let data = data.to_string();
+
+                    {
+                        let path = if let Some(path) = config.value_of("plot_filename") {
+                            let mut path = Path::new(path).to_path_buf();
+                            path.set_extension("svg");
+                            path
+                        } else {
+                            "plot.svg".into()
+                        };
+                        let mut file =
+                            std::fs::File::create(&path).expect("failed to create plot file");
+                        file.write_all(data.as_bytes())
+                            .expect("failed to write plot file");
+                    }
+
+                    println!("Wrote plot file.");
                 }
             }
             Some(_) => unreachable!("invalid subcommand"),

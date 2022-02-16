@@ -37,8 +37,11 @@ impl DerefMut for OwnedClusterList {
     }
 }
 
+/// F64 wrapper that implements [`Ord`] and [`Hash`].
+///
+/// You should probably not be using this unless you know what you're doing.
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct F64OrdHash(f64);
+pub struct F64OrdHash(pub f64);
 impl F64OrdHash {
     fn key(&self) -> u64 {
         self.0.to_bits()

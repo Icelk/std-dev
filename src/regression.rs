@@ -35,10 +35,38 @@ pub use derived::{
 };
 pub use ols::LinearOls;
 
+trait Model: Predictive + Display {}
+impl<T: Predictive + Display> Model for T {}
+
+pub struct DynModel {
+    model: Box<dyn Model>,
+}
+impl DynModel {
+    pub fn new(model: impl Predictive + Display + 'static) -> Self {
+        Self {
+            model: Box::new(model),
+        }
+    }
+}
+impl Predictive for DynModel {
+    fn predict_outcome(&self, predictor: f64) -> f64 {
+        self.model.predict_outcome(predictor)
+    }
+}
+impl Display for DynModel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.model.fmt(f)
+    }
+}
+
 pub trait Predictive {
     /// Calculates the predicted outcome of `predictor`.
     fn predict_outcome(&self, predictor: f64) -> f64;
-
+}
+/// Helper trait to make the [`Determination::error`] method take a generic iterator.
+///
+/// This enables [`Predicative`] to be `dyn`.
+pub trait Determination: Predictive {
     /// Calculates the R² (coefficient of determination), the proportion of variation in predicted
     /// model.
     ///
@@ -72,6 +100,7 @@ pub trait Predictive {
         1.0 - (res / tot)
     }
 }
+impl<T: Predictive> Determination for T {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LinearCoefficients {
@@ -87,7 +116,8 @@ impl Predictive for LinearCoefficients {
 }
 impl Display for LinearCoefficients {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}x + {}", self.k, self.m)
+        let p = f.precision().unwrap_or(5);
+        write!(f, "{:.2$}x + {:.2$}", self.k, self.m, p)
     }
 }
 
@@ -128,18 +158,20 @@ pub mod derived {
     }
     impl Display for PowerCoefficients {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let p = f.precision().unwrap_or(5);
             write!(
                 f,
-                "{} * {x}^{}{}",
+                "{:.3$} * {x}^{:.3$}{}",
                 self.k,
                 self.e,
                 if let Some(out) = self.outcome_additive {
-                    format!(" - {}", out)
+                    format!(" - {:.1$}", out, p)
                 } else {
                     String::new()
                 },
+                p,
                 x = if let Some(pred) = self.predictor_additive {
-                    format!("(x + {})", pred)
+                    format!("(x + {:.1$})", pred, p)
                 } else {
                     "x".to_string()
                 },
@@ -250,18 +282,20 @@ pub mod derived {
     }
     impl Display for ExponentialCoefficients {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let p = f.precision().unwrap_or(5);
             write!(
                 f,
-                "{} * {}^{x}{}",
+                "{:.3$} * {:.3$}^{x}{}",
                 self.k,
                 self.b,
                 if let Some(out) = self.outcome_additive {
-                    format!(" - {}", out)
+                    format!(" - {:.1$}", out, p)
                 } else {
                     String::new()
                 },
+                p,
                 x = if let Some(pred) = self.predictor_additive {
-                    format!("(x + {})", pred)
+                    format!("(x + {:.1$})", pred, p)
                 } else {
                     "x".to_string()
                 },
@@ -414,10 +448,12 @@ pub mod ols {
                     }
                 }
 
+                let p = f.precision().unwrap_or(5);
+
                 match order {
-                    0 => write!(f, "{coefficient}")?,
-                    1 => write!(f, "{coefficient}x")?,
-                    _ => write!(f, "{coefficient}x^({order})")?,
+                    0 => write!(f, "{coefficient:.*}", p)?,
+                    1 => write!(f, "{coefficient:.*}x", p)?,
+                    _ => write!(f, "{coefficient:.0$}x^{order:.0$}", p)?,
                 }
 
                 first = false;
