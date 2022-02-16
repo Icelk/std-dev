@@ -227,6 +227,24 @@ fn main() {
                 .takes_value(true)
                 .requires("plot")
             )
+            .arg(Arg::new("plot_title")
+                .long("plot-title")
+                .help("Title of plot.")
+                .takes_value(true)
+                .requires("plot")
+            )
+            .arg(Arg::new("plot_x_axis")
+                .long("plot-axis-x")
+                .help("Name of x axis of plot (the first column of data).")
+                .takes_value(true)
+                .requires("plot")
+            )
+            .arg(Arg::new("plot_y_axis")
+                .long("plot-axis-y")
+                .help("Name of y axis of plot (the second column of data).")
+                .takes_value(true)
+                .requires("plot")
+            )
         );
     }
 
@@ -379,9 +397,13 @@ fn main() {
                             ))
                         }),
                     );
-                    plot.scatter("input", x_iter.clone().zip(y_iter.clone()));
+                    plot.scatter("", x_iter.clone().zip(y_iter.clone()));
 
-                    let mut plotter = plot.build().plot("Regression", "predictors", "outcomes");
+                    let mut plotter = plot.build().plot(
+                        config.value_of("plot_title").unwrap_or("Regression"),
+                        config.value_of("plot_x_axis").unwrap_or("predictors"),
+                        config.value_of("plot_y_axis").unwrap_or("outcomes"),
+                    );
                     let data = poloto::disp(|a| plotter.simple_theme(a));
                     let data = data.to_string();
 
