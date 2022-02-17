@@ -48,6 +48,7 @@ Enables all regression estimators. This requires `nalgebra`, which provides line
 ## Clusters
 
 > As all algorithms are executed in linear time now, this is virtually obsolete, but nevertheless an interesting feature.
+> If you already have clustered data, this feature is great.
 
 When using the clusters feature (turning your list into a `ClusterList`),
 calculations are done per _unique_ value.

@@ -429,7 +429,7 @@ fn main() {
             }
             Some(_) => unreachable!("invalid subcommand"),
             None => {
-                let values = {
+                let mut values = {
                     match input {
                         InputValue::Count(count) => std_dev::OwnedClusterList::new(count),
                         InputValue::List(list) => {
@@ -447,13 +447,15 @@ fn main() {
                         }
                     }
                 };
+
                 let now = Instant::now();
 
-                let mut values = values.borrow().optimize_values();
+                values = values.borrow().optimize_values();
 
                 if debug_performance {
                     println!("Optimizing input took {}µs", now.elapsed().as_micros());
                 }
+
                 let now = Instant::now();
 
                 let mean = std_dev::sums_cluster(values.borrow());
