@@ -9,7 +9,7 @@ use std::time::Instant;
 use clap::Arg;
 
 pub use std_dev;
-use std_dev::regression::{DynModel, Predictive};
+use std_dev::regression::{Determination, DynModel, Predictive};
 
 fn parse<T: FromStr>(s: &str) -> Option<T> {
     if let Ok(v) = s.parse() {
@@ -138,7 +138,6 @@ fn print_regression(
     len: usize,
     precision: Option<usize>,
 ) {
-    use std_dev::regression::Determination;
     if let Some(precision) = precision {
         println!(
             "Determination: {:.1$}, Predicted equation: {regression:.1$}",
@@ -398,6 +397,10 @@ fn main() {
                         }),
                     );
                     plot.scatter("", x_iter.clone().zip(y_iter.clone()));
+                    plot.line(
+                        format!("R² = {:.4}", model.determination(x_iter, y_iter, len)),
+                        std::iter::empty::<(_, _)>(),
+                    );
 
                     let mut plotter = plot.build().plot(
                         config.value_of("plot_title").unwrap_or("Regression"),
