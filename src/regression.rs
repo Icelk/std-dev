@@ -1295,3 +1295,24 @@ pub mod ols {
         polynomial_simple(x, y, len, degree)
     }
 }
+
+/// [Theil-Sen estimator](https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator).
+/// [`LinearTheilSen`] implements [`LinearEstimator`].
+pub mod theil_sen {
+    /// Unique permutations of two elements in the slice.
+    pub fn permutations<T: Copy>(slice: &[T]) -> impl Iterator<Item = (T, T)> + '_ {
+        slice
+            .iter()
+            .enumerate()
+            .map(|(pos, t1)| {
+                let left = &slice[pos..];
+                left.iter().map(|t2| (*t1, *t2))
+            })
+            .flatten()
+    }
+
+    /// Naive Theil-Sen implementation, which checks each line.
+    ///
+    /// O(n²)
+    pub fn slow_linear(){}
+}

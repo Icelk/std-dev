@@ -204,7 +204,7 @@ pub struct MedianOutput {
     pub higher_quadrille: Option<f64>,
 }
 
-pub fn std_dev(values: ClusterList) -> MeanOutput {
+pub fn std_dev_cluster(values: ClusterList) -> MeanOutput {
     let m = values.sum() / values.len() as f64;
     let squared_deviations = values.sum_squared_diff(m);
     let variance: f64 = squared_deviations / (values.len() - 1) as f64;
@@ -213,7 +213,7 @@ pub fn std_dev(values: ClusterList) -> MeanOutput {
         mean: m,
     }
 }
-pub fn median(values: ClusterList) -> MedianOutput {
+pub fn median_cluster(values: ClusterList) -> MedianOutput {
     let lower_half = values.split_start(values.len() / 2);
     let lower_half = lower_half.borrow();
     let upper_half = values.split_end(values.len() / 2);

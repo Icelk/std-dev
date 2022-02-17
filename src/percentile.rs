@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 /// Percentile / median calculations.
 ///
 /// - `O(n log n)` [`naive_percentile`] (simple to understand)
@@ -52,16 +54,38 @@ where
     }
 }
 
-impl PercentileResolve for f64 {
-    fn mean(a: Self, b: Self) -> Self {
-        (a + b) / 2.0
-    }
+macro_rules! impl_percentile_resolv_float {
+    ($($t: ty, )+) => {
+        $(
+        impl PercentileResolve for $t {
+            fn mean(a: Self, b: Self) -> Self {
+                (a + b) / 2.0
+            }
+        }
+        )+
+    };
 }
-impl PercentileResolve for f32 {
-    fn mean(a: Self, b: Self) -> Self {
-        (a + b) / 2.0
-    }
+macro_rules! impl_percentile_resolv_int {
+    ($($t: ty, )+) => {
+        $(
+        /// This implementation may not be exact if the mean of the values does not give an
+        /// integer.
+        /// In that case, the value is rounded down.
+        impl PercentileResolve for $t {
+            fn mean(a: Self, b: Self) -> Self {
+                (a + b) / 2
+            }
+        }
+        )+
+    };
 }
+impl_percentile_resolv_float!(f32, f64,);
+impl_percentile_resolv_int!(i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize,);
+// impl <T: Deref<Target = Resolv>, Resolv: PercentileResolve> PercentileResolve for T {
+// fn mean(a: Self, b: Self) -> Self {
+// a.deref().mean(b.deref())
+// }
+// }
 
 pub struct Fraction {
     pub numerator: usize,
@@ -103,7 +127,7 @@ pub fn naive_percentile<T: Ord>(values: &mut [T]) -> Percentile<&T> {
 pub fn percentile<T: Ord + Clone>(
     values: &mut [T],
     target_percentile: Fraction,
-    pivot_fn: &mut impl FnMut(&[T]) -> usize,
+    pivot_fn: &mut impl FnMut(&mut [T]) -> Cow<'_, T>,
 ) -> Percentile<T> {
     assert!(
         values.len() >= target_percentile.denominator,
@@ -134,7 +158,8 @@ pub fn percentile_rand<T: Ord + Clone>(
 ) -> Percentile<T> {
     let mut rng = rand::thread_rng();
     percentile(values, target_percentile, &mut |slice| {
-        rng.sample(rand::distributions::Uniform::new(0_usize, slice.len()))
+        let idx = rng.sample(rand::distributions::Uniform::new(0_usize, slice.len()));
+        Cow::Borrowed(&slice[idx])
     })
 }
 /// Convenience function for [`percentile`] with the 50% mark as the target and a random
@@ -145,7 +170,7 @@ pub fn median<T: Ord + Clone>(values: &mut [T]) -> Percentile<T> {
 fn quickselect<'a, T: Ord + Clone>(
     values: &'a mut [T],
     k: usize,
-    pivot_fn: &mut impl FnMut(&[T]) -> usize,
+    pivot_fn: &mut impl FnMut(&mut [T]) -> Cow<'_, T>,
 ) -> Percentile<&'a T> {
     if values.len() == 1 {
         assert_eq!(k, 0);
@@ -157,10 +182,10 @@ fn quickselect<'a, T: Ord + Clone>(
     }
 
     let pivot = pivot_fn(values);
+    let pivot = pivot.into_owned();
 
-    let pivot_value = values[pivot].clone();
-    let (lows, highs_inclusive) = include(values, |v| *v < pivot_value);
-    let (pivots, highs) = include(highs_inclusive, |v| *v > pivot_value);
+    let (lows, highs_inclusive) = include(values, |v| *v < pivot);
+    let (pivots, highs) = include(highs_inclusive, |v| *v > pivot);
 
     if k < lows.len() {
         quickselect(lows, k, pivot_fn)
@@ -183,4 +208,37 @@ fn include<T>(slice: &mut [T], mut predicate: impl FnMut(&T) -> bool) -> (&mut [
     }
 
     slice.split_at_mut(add_index)
+}
+pub fn median_of_medians<T: Ord + Clone + PercentileResolve>(
+    values: &mut [T],
+    target_percentile: Fraction,
+) -> Percentile<T> {
+    percentile(values, target_percentile, &mut median_of_medians_pivot_fn)
+}
+/// Pick a good pivot within l, a list of numbers
+/// This algorithm runs in O(n) time.
+fn median_of_medians_pivot_fn<T: Ord + Clone + PercentileResolve>(l: &mut [T]) -> Cow<'_, T> {
+    let len = l.len();
+    assert!(len > 0);
+
+    // / 5 * 5 truncates to the lower 5-multiple.
+    // We only want full chunks.
+    let chunks = l[..(len / 5) * 5].chunks_mut(5);
+
+    // Next, we sort each chunk. Each group is a fixed length, so each sort
+    // takes constant time. Since we have n/5 chunks, this operation
+    // is also O(n)
+    let sorted_chunks = chunks.map(|c| {
+        c.sort_unstable();
+        c
+    });
+
+    let medians = sorted_chunks.map(|chunk| chunk[2].clone());
+    let mut medians: Vec<_> = medians.collect();
+    let median_of_medians = percentile(
+        &mut medians,
+        Fraction::new(1, 2),
+        &mut median_of_medians_pivot_fn,
+    );
+    Cow::Owned(median_of_medians.resolve())
 }
