@@ -193,32 +193,34 @@ impl<'a> ClusterList<'a> {
 }
 
 /// Returned from [`std_dev`].
-pub struct MeanOutput {
+pub struct SumOutput {
     pub standard_deviation: f64,
     pub mean: f64,
 }
 /// Returned from [`median`]
-pub struct MedianOutput {
+pub struct PercentilesOutput {
     pub median: f64,
     pub lower_quadrille: Option<f64>,
     pub higher_quadrille: Option<f64>,
 }
 
-pub fn std_dev_cluster(values: ClusterList) -> MeanOutput {
+/// Get a collection of sum statistics.
+pub fn sums_cluster(values: ClusterList) -> SumOutput {
     let m = values.sum() / values.len() as f64;
     let squared_deviations = values.sum_squared_diff(m);
     let variance: f64 = squared_deviations / (values.len() - 1) as f64;
-    MeanOutput {
+    SumOutput {
         standard_deviation: variance.sqrt(),
         mean: m,
     }
 }
-pub fn median_cluster(values: ClusterList) -> MedianOutput {
+/// Get a collection of percentiles from `values`.
+pub fn percentiles_cluster(values: ClusterList) -> PercentilesOutput {
     let lower_half = values.split_start(values.len() / 2);
     let lower_half = lower_half.borrow();
     let upper_half = values.split_end(values.len() / 2);
     let upper_half = upper_half.borrow();
-    MedianOutput {
+    PercentilesOutput {
         median: values.median(),
         lower_quadrille: if lower_half.len() > 1 {
             Some(lower_half.median())

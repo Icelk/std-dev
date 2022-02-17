@@ -185,7 +185,7 @@ fn quickselect<'a, T: Ord + Clone>(
     let pivot = pivot.into_owned();
 
     let (lows, highs_inclusive) = include(values, |v| *v < pivot);
-    let (pivots, highs) = include(highs_inclusive, |v| *v > pivot);
+    let (highs, pivots) = include(highs_inclusive, |v| *v > pivot);
 
     if k < lows.len() {
         quickselect(lows, k, pivot_fn)
@@ -196,13 +196,14 @@ fn quickselect<'a, T: Ord + Clone>(
     }
 }
 fn include<T>(slice: &mut [T], mut predicate: impl FnMut(&T) -> bool) -> (&mut [T], &mut [T]) {
-    let add_index = 0;
+    let mut add_index = 0;
     let mut index = 0;
     let len = slice.len();
     while index < len {
         let value = &mut slice[index];
         if predicate(value) {
             slice.swap(index, add_index);
+            add_index += 1;
         }
         index += 1;
     }
@@ -241,4 +242,200 @@ fn median_of_medians_pivot_fn<T: Ord + Clone + PercentileResolve>(l: &mut [T]) -
         &mut median_of_medians_pivot_fn,
     );
     Cow::Owned(median_of_medians.resolve())
+}
+
+pub mod cluster {
+    use std::ops::{Deref, DerefMut};
+
+    use crate::{Cluster, ClusterList, OwnedClusterList};
+
+    use super::*;
+
+    /// Percentile by sorting.
+    ///
+    /// # Performance & scalability
+    ///
+    /// This will be very quick for small sets.
+    /// O(n) performance when `values.len() < 5`, else O(n log n).
+    pub fn naive_percentile(
+        values: &mut OwnedClusterList,
+        target_percentile: Fraction,
+    ) -> Percentile<f64> {
+        values
+            .list
+            .sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        let values = values.borrow();
+        let len = values.len();
+        let even = len * target_percentile.numerator % target_percentile.denominator == 0;
+        let target = len * target_percentile.numerator / target_percentile.denominator;
+        let mut len = len;
+
+        for (pos, (v, count)) in values.list.iter().enumerate() {
+            len -= *count;
+            if len <= target && even {
+                let overstep = target - len;
+                return Percentile::Mean(
+                    *v,
+                    values.list[pos + if overstep == 0 { 1 } else { 0 }].0,
+                );
+            }
+            if len <= target && !even {
+                return Percentile::Single(*v);
+            }
+        }
+        Percentile::Single(0.0)
+    }
+    /// quickselect algorithm
+    ///
+    /// Consider using [`percentile_rand`] or [`median`].
+    ///
+    /// `pivot_fn` must return an integer if range [0..values.len()).
+    pub fn percentile(
+        values: &mut OwnedClusterList,
+        target_percentile: Fraction,
+        pivot_fn: &mut impl FnMut(&ClusterList) -> f64,
+    ) -> Percentile<f64> {
+        assert!(
+            values.len() >= target_percentile.denominator,
+            "percentile calculation got too few values"
+        );
+        let len = values.borrow().len();
+        let target_len =
+            (len * target_percentile.numerator / target_percentile.denominator).clamp(0, len);
+        println!("len {len}, target {target_len} {}/{}", target_percentile.numerator, target_percentile.denominator);
+        if (len * target_percentile.numerator) % target_percentile.denominator == 1 {
+            println!("odd");
+            quickselect(&mut values.into(), target_len, pivot_fn)
+        } else {
+            Percentile::Mean(
+                quickselect(&mut values.into(), target_len - 1, pivot_fn)
+                    .into_single()
+                    .unwrap(),
+                quickselect(&mut values.into(), target_len, pivot_fn)
+                    .into_single()
+                    .unwrap(),
+            )
+        }
+    }
+    /// Convenience function for [`percentile`] with a random `pivot_fn`.
+    pub fn percentile_rand(
+        values: &mut OwnedClusterList,
+        target_percentile: Fraction,
+    ) -> Percentile<f64> {
+        let mut rng = rand::thread_rng();
+        percentile(values, target_percentile, &mut |slice| {
+            println!("Choosing sublist of {:?}", slice);
+            let mut idx = rng.sample(rand::distributions::Uniform::new(0_usize, slice.len()));
+            println!("Chose index {idx}");
+            for item in slice.list {
+                if idx < item.1 {
+                    println!("That's item {}", item.0);
+                    return item.0;
+                }
+                idx -= item.1;
+            }
+            slice.list.last().unwrap().0
+        })
+    }
+    /// Convenience function for [`percentile`] with the 50% mark as the target and a random
+    /// `pivot_fn`.
+    pub fn median(values: &mut OwnedClusterList) -> Percentile<f64> {
+        percentile_rand(values, Fraction::new(1, 2))
+    }
+    struct ClusterMut<'a> {
+        list: &'a mut [Cluster],
+        len: usize,
+    }
+    impl<'a> Deref for ClusterMut<'a> {
+        type Target = [Cluster];
+        fn deref(&self) -> &Self::Target {
+            self.list
+        }
+    }
+    impl<'a> DerefMut for ClusterMut<'a> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            self.list
+        }
+    }
+    impl<'a> From<&'a ClusterMut<'a>> for ClusterList<'a> {
+        fn from(c: &'a ClusterMut<'a>) -> Self {
+            ClusterList {
+                list: c.list,
+                len: c.len,
+            }
+        }
+    }
+    impl<'a> From<&'a mut OwnedClusterList> for ClusterMut<'a> {
+        fn from(l: &'a mut OwnedClusterList) -> Self {
+            Self {
+                list: &mut l.list,
+                len: l.len,
+            }
+        }
+    }
+    impl<'a> ClusterMut<'a> {
+        fn list(&self) -> ClusterList {
+            ClusterList::from(self)
+        }
+    }
+    fn quickselect<'a>(
+        values: &'a mut ClusterMut<'a>,
+        k: usize,
+        pivot_fn: &mut impl FnMut(&ClusterList) -> f64,
+    ) -> Percentile<f64> {
+        if values.len() == 1 {
+            // assert_eq!(k, 0);
+            return Percentile::Single(values[0].0);
+        }
+
+        let pivot = pivot_fn(&values.list());
+
+        let (mut lows, mut highs_inclusive) = include(values, |v| v < pivot);
+        let (mut highs,  pivots) = include(&mut highs_inclusive, |v| v > pivot);
+
+        println!("lower {:?}, pivot {:?} high {:?}", lows.list(), pivots.list(), highs.list());
+
+        if k < lows.list().len() {
+            quickselect(&mut lows, k, pivot_fn)
+        } else if k < lows.list().len() + pivots.list().len() {
+            Percentile::Single(pivots[0].0)
+        } else {
+            quickselect(
+                &mut highs,
+                k - lows.list().len() - pivots.list().len(),
+                pivot_fn,
+            )
+        }
+    }
+    fn include<'a>(
+        slice: &'a mut ClusterMut<'a>,
+        mut predicate: impl FnMut(f64) -> bool,
+    ) -> (ClusterMut<'a>, ClusterMut<'a>) {
+        let mut add_index = 0;
+        let mut index = 0;
+        let len = slice.len();
+        let mut total_len = 0;
+        let cluser_len = slice.list().len();
+        while index < len {
+            let value = &mut slice[index];
+            if predicate(value.0) {
+                total_len += value.1;
+                slice.swap(index, add_index);
+                add_index += 1;
+            }
+            index += 1;
+        }
+
+        let (a, b) = slice.split_at_mut(add_index);
+        (
+            ClusterMut {
+                list: a,
+                len: total_len,
+            },
+            ClusterMut {
+                list: b,
+                len: cluser_len - total_len,
+            },
+        )
+    }
 }
