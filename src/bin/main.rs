@@ -154,7 +154,7 @@ fn print_regression(
 }
 
 fn main() {
-    let mut app = clap::app_from_crate!();
+    let mut app = clap::command!();
 
     app = app
         .arg(Arg::new("debug-performance").short('p').long("debug-performance"))
@@ -174,7 +174,7 @@ fn main() {
 
     #[cfg(feature = "regression")]
     {
-        app = app.subcommand(clap::App::new("regression")
+        app = app.subcommand(clap::Command::new("regression")
             .about("Find a equation which describes the input data. Tries to automatically determine the model if no arguments specifying it are provided. \
             Predictors are the independent values (usually denoted `x`) from which we want a equation to get the \
             outcomes - the dependant variables, usually `y` or `f(x)`.")
