@@ -6,10 +6,17 @@ This codebase is well-documented and comments, in an effort to expose the wonder
 
 We're ever expanding, but for now the following are implemented.
 
-- Standard deviation
-- Fast median and mean for large datasets with limited options of values
-- [Ordinary least square](https://en.wikipedia.org/wiki/Ordinary_least_squares) for linear and polynomial regression
-- Exponential/growth and power regression, with **correct handling of negatives**
+-   Standard deviation
+-   Fast median and mean for large datasets with limited options of values ([clusters](#clusters))
+-   O(n) - linear time - algorithms, both for arbitrary generic lists (any type of number) and clusters:
+    -   percentile
+        -   median
+    -   standard deviation
+    -   mean
+-   [Ordinary least square](https://en.wikipedia.org/wiki/Ordinary_least_squares) for linear and polynomial regression
+-   Exponential/growth and power regression, with **correct handling of negatives**
+-   "best fit" method if you don't know which regression model to use.
+-   (binary) A basic plotting feature to preview the equation in relation to the input data
 
 # Usage
 
@@ -38,12 +45,15 @@ Enables all regression estimators. This requires `nalgebra`, which provides line
 
 # Performance
 
-The n here isn't numer of elements, but rather number of *unique* elements.
-If you have a range of possible values small compared to the count of values, this becomes stupidly fast.
-Grouping the values has a O(n) time where n = number of elements. This is however fast - it takes less than half the time of parsing, so it isn't really affecting performance.
+## Clusters
 
-This means that n is the rate of which the range increases compared to input length. If the range doesn't expand, mean & standard deviation is O(1) and median is also O(1)! This isn't the case, as parsing takes time, but then it becomes O(n). If you use this as a library, you'd get O(1) performance.
+> As all algorithms are executed in linear time now, this is virtually obsolete, but nevertheless an interesting feature.
 
-O(n) for mean & standard deviation
+When using the clusters feature (turning your list into a `ClusterList`),
+calculations are done per _unique_ value.
+Say you have a dataset of infant height, in centimeters.
+That's probably only going to be some 40 different values, but potentially millions of entries.
+Using clusters, all that data is only processed as `O(40)`, not `O(millions)`. (I know that notation isn't right, but you get my point).
 
-O(n log n) for median and derivatives
+Creating this cluster involves adding all the values to a map. This takes `O(n)` time, but is very slow compared to all other algorithms.
+After creation, most operations in this library are executed in `O(m)` time, where m is the count of unique values.
