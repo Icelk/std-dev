@@ -6,6 +6,11 @@ use std::ops::{Deref, DerefMut};
 #[path = "regression.rs"]
 pub mod regression;
 
+pub mod percentile;
+
+pub use percentile::{median, percentile, percentile_rand, Fraction};
+pub use regression::{best_fit_ols as regression_best_fit, Determination, Predictive};
+
 pub type Cluster = (f64, usize);
 #[derive(Debug)]
 pub struct OwnedClusterList {

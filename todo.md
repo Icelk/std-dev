@@ -6,7 +6,7 @@
 -   [x] Fix NaN on exponential and power regressions (add the min y + 1 to get all numbers above 1, then fit the curve to that)
 -   [ ] Slow ( O(n²) ) Theil-Sen estimator
 -   [ ] O(n log n) Theil-Sen estimator (heavy-hitter, very hard)
--   [ ] O(n) median (intermediate difficulty)
+-   [x] O(n) median (intermediate difficulty)
 -   [ ] All statistical tools for unique lists (not `Cluster`s)
 -   [ ] Performance logging in regression calculations.
 -   [x] Plotting of data & regressions using [poloto](https://crates.io/crates/poloto) or [plotlib](https://crates.io/crates/plotlib)
