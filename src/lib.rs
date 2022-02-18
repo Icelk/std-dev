@@ -172,7 +172,7 @@ impl<'a> ClusterList<'a> {
     }
 }
 
-/// Returned from [`sums_cluster`] and similar functions.
+/// Returned from [`standard_deviation_cluster`] and similar functions.
 pub struct StandardDeviationOutput {
     pub standard_deviation: f64,
     pub mean: f64,

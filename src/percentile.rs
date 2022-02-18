@@ -88,6 +88,8 @@ macro_rules! impl_percentile_resolv_int {
 impl_percentile_resolv_float!(f32, f64,);
 impl_percentile_resolv_int!(i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize,);
 
+/// Matching of this with the percentile is done on a best-effort basis.
+/// Please contribute if you need a more solid system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fraction {
     pub numerator: usize,
