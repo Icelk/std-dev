@@ -13,7 +13,19 @@ pub use regression::{best_fit_ols as regression_best_fit, Determination, Predict
 
 use self::percentile::cluster;
 
+/// > As all algorithms are executed in linear time now, this is not as useful, but nevertheless an interesting feature.
+/// > If you already have clustered data, this feature is great.
+///
+/// When using this, calculations are done per _unique_ value.
+/// Say you have a dataset of infant height, in centimeters.
+/// That's probably only going to be some 40 different values, but potentially millions of entries.
+/// Using clusters, all that data is only processed as `O(40)`, not `O(millions)`. (I know that notation isn't right, but you get my point).
 pub type Cluster = (f64, usize);
+
+/// Owned variant of [`ClusterList`].
+/// Use [`Self::borrow`] to get a [`ClusterList`].
+/// The inner slice is accessible through the [`Deref`] and [`DerefMut`], which means you can use
+/// this as a mutable slice.
 #[derive(Debug)]
 pub struct OwnedClusterList {
     list: Vec<Cluster>,
@@ -206,7 +218,6 @@ pub fn mean<'a, T: std::iter::Sum<&'a T> + ops::Div + num_traits::FromPrimitive>
 ///
 /// O(m), where m is the number of [`Cluster`]s.
 pub fn standard_deviation_cluster(values: &ClusterList) -> StandardDeviationOutput<f64> {
-    std();
     let m = mean_cluster(values);
     let squared_deviations = values.sum_squared_diff(m);
     let variance: f64 = squared_deviations / (values.len() - 1) as f64;
@@ -215,11 +226,10 @@ pub fn standard_deviation_cluster(values: &ClusterList) -> StandardDeviationOutp
         mean: m,
     }
 }
-fn std() {
-    let test: &[f64] = &[2343.3, 324.2, 324.523, 0.234234];
-    let std_dev = standard_deviation(test);
-    println!("{std_dev:?}");
-}
+/// Get the standard deviation of `values`.
+/// The mean is also returned from this, because it's required to compute the standard deviation.
+///
+/// O(n)
 pub fn standard_deviation<
     'a,
     T: std::iter::Sum<&'a T>

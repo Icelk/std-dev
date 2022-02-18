@@ -1,3 +1,6 @@
+//! Various regression models to fit the best line to your data.
+//! All written to be understandable.
+//!
 //! Vocabulary:
 //!
 //! - Predictors - the independent values (usually denoted `x`) from which we want a equation to get the:

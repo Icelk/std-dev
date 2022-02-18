@@ -1,17 +1,19 @@
-use std::borrow::Cow;
+//! Percentile / median calculations.
+//!
+//! - `O(n log n)` [`naive_percentile`] (simple to understand)
+//! - probabilistic `O(n)` [`percentile`] (recommended, fastest, and also quite simple to understand)
+//! - deterministic `O(n)` [`median_of_medians`] (harder to understand, probably slower than the
+//!     probabilistic version.)
+//!
+//! You should probably use [`percentile_rand`].
+//!
+//! The linear time algoritms are implementations following [this blogpost](https://rcoh.me/posts/linear-time-median-finding/).
 
-/// Percentile / median calculations.
-///
-/// - `O(n log n)` [`naive_percentile`] (simple to understand)
-/// - probabilistic `O(n)` [`percentile`] (recommended, fastest, and also quite simple to understand)
-/// - deterministic `O(n)` [`median_of_medians`] (harder to understand, probably slower than the
-///     probabilistic version.)
-///
-/// You should probably use [`percentile_rand`].
-///
-/// The linear time algoritms are implementations following [this blogpost](https://rcoh.me/posts/linear-time-median-finding/).
 use rand::Rng;
+use std::borrow::Cow;
+use std::ops;
 
+/// The result of a percentile (e.g. mean) lookup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Percentile<T> {
     /// A single value was found.
@@ -47,6 +49,8 @@ impl<T: Clone> Percentile<&T> {
         }
     }
 }
+/// Resolves the mean function to return a concrete value.
+/// Accessible through [`Percentile::resolve`].
 pub trait PercentileResolve
 where
     Self: Sized,
@@ -60,9 +64,11 @@ where
     }
 }
 
-impl<T: num_traits::identities::One + ops::Add<Output = T> + ops::Div<Output = T>> PercentileResolve for T {
+impl<T: num_traits::identities::One + ops::Add<Output = T> + ops::Div<Output = T>> PercentileResolve
+    for T
+{
     fn mean(a: Self, b: Self) -> Self {
-        (a+b) / (T::one() + T::one())
+        (a + b) / (T::one() + T::one())
     }
 }
 
@@ -153,6 +159,7 @@ pub fn percentile_rand<T: Ord + Clone>(
 pub fn median<T: Ord + Clone>(values: &mut [T]) -> Percentile<T> {
     percentile_rand(values, Fraction::new(1, 2))
 }
+/// Low level function used by this module.
 fn quickselect<'a, T: Ord + Clone>(
     values: &'a mut [T],
     k: usize,
@@ -181,7 +188,9 @@ fn quickselect<'a, T: Ord + Clone>(
         quickselect(highs, k - lows.len() - pivots.len(), pivot_fn)
     }
 }
-fn include<T>(slice: &mut [T], mut predicate: impl FnMut(&T) -> bool) -> (&mut [T], &mut [T]) {
+/// Moves items in the slice and splits it so the first returned slice contains all elements where
+/// `predicate` is true. The second contains all other.
+pub fn include<T>(slice: &mut [T], mut predicate: impl FnMut(&T) -> bool) -> (&mut [T], &mut [T]) {
     let mut add_index = 0;
     let mut index = 0;
     let len = slice.len();
@@ -196,6 +205,8 @@ fn include<T>(slice: &mut [T], mut predicate: impl FnMut(&T) -> bool) -> (&mut [
 
     slice.split_at_mut(add_index)
 }
+/// Same result as [`percentile_rand`] but in deterministic linear time.
+/// But probabilistically way slower.
 pub fn median_of_medians<T: Ord + Clone + PercentileResolve>(
     values: &mut [T],
     target_percentile: Fraction,
@@ -255,6 +266,10 @@ fn percentile_index(len: usize, percentile: Fraction) -> Percentile<usize> {
     }
 }
 
+/// Operations on [`Cluster`]s.
+///
+/// This attempts to implement all functionality of this module but using clusters.
+/// This turned out to be quite difficult.
 pub mod cluster {
     use std::ops::{Deref, DerefMut};
 
