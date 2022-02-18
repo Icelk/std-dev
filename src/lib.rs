@@ -11,6 +11,8 @@ pub mod percentile;
 pub use percentile::{median, percentile, percentile_rand, Fraction};
 pub use regression::{best_fit_ols as regression_best_fit, Determination, Predictive};
 
+use self::percentile::cluster;
+
 pub type Cluster = (f64, usize);
 #[derive(Debug)]
 pub struct OwnedClusterList {
@@ -118,28 +120,6 @@ impl<'a> ClusterList<'a> {
         }
         sum
     }
-    /// The inner list must be sorted by the `f64`.
-    // `TODO`: implement https://brilliant.org/wiki/median-finding-algorithm/
-    // https://rcoh.me/posts/linear-time-median-finding/
-    pub fn median(&self) -> f64 {
-        let len = self.len();
-        let even = len % 2 == 0;
-        let target = len / 2;
-        let mut len = len;
-
-        for (pos, (v, count)) in self.list.iter().enumerate() {
-            len -= *count;
-            if len <= target && even {
-                let overstep = target - len;
-                let mean = (*v + self.list[pos + if overstep == 0 { 1 } else { 0 }].0) / 2.0;
-                return mean;
-            }
-            if len <= target && !even {
-                return *v;
-            }
-        }
-        0.0
-    }
     /// Can be used in [`Self::new`].
     pub fn split_start(&self, len: usize) -> OwnedClusterList {
         let mut sum = 0;
@@ -193,7 +173,7 @@ impl<'a> ClusterList<'a> {
 }
 
 /// Returned from [`sums_cluster`] and similar functions.
-pub struct SumOutput {
+pub struct StandardDeviationOutput {
     pub standard_deviation: f64,
     pub mean: f64,
 }
@@ -204,33 +184,38 @@ pub struct PercentilesOutput {
     pub higher_quadrille: Option<f64>,
 }
 
-/// Get a collection of sum statistics.
-pub fn sums_cluster(values: ClusterList) -> SumOutput {
-    let m = values.sum() / values.len() as f64;
+pub fn mean_cluster(values: &ClusterList) -> f64 {
+    values.sum() / values.len() as f64
+}
+/// Get the standard deviation of `values`.
+/// The mean is also returned from this, because it's required to compute the standard deviation.
+///
+/// O(m), where m is the number of [`Cluster`]s.
+pub fn standard_deviation_cluster(values: &ClusterList) -> StandardDeviationOutput {
+    let m = mean_cluster(values);
     let squared_deviations = values.sum_squared_diff(m);
     let variance: f64 = squared_deviations / (values.len() - 1) as f64;
-    SumOutput {
+    StandardDeviationOutput {
         standard_deviation: variance.sqrt(),
         mean: m,
     }
 }
+
 /// Get a collection of percentiles from `values`.
-pub fn percentiles_cluster(values: ClusterList) -> PercentilesOutput {
-    let lower_half = values.split_start(values.len() / 2);
-    let lower_half = lower_half.borrow();
-    let upper_half = values.split_end(values.len() / 2);
-    let upper_half = upper_half.borrow();
+pub fn percentiles_cluster(values: &mut OwnedClusterList) -> PercentilesOutput {
+    let lower = if values.borrow().len() >= 5 {
+        Some(cluster::percentile_rand(values, Fraction::new(1, 4)).resolve())
+    } else {
+        None
+    };
+    let higher = if values.borrow().len() >= 5 {
+        Some(cluster::percentile_rand(values, Fraction::new(3, 4)).resolve())
+    } else {
+        None
+    };
     PercentilesOutput {
-        median: values.median(),
-        lower_quadrille: if lower_half.len() > 1 {
-            Some(lower_half.median())
-        } else {
-            None
-        },
-        higher_quadrille: if upper_half.len() > 1 {
-            Some(upper_half.median())
-        } else {
-            None
-        },
+        median: cluster::median(values).resolve(),
+        lower_quadrille: lower,
+        higher_quadrille: higher,
     }
 }

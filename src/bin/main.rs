@@ -466,7 +466,7 @@ fn main() {
 
                 let now = Instant::now();
 
-                let mean = std_dev::sums_cluster(values.borrow());
+                let mean = std_dev::standard_deviation_cluster(&values.borrow());
 
                 if debug_performance {
                     println!(
@@ -479,7 +479,7 @@ fn main() {
                 // Sort of clusters required.
                 values.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
-                let median = std_dev::percentiles_cluster(std_dev::ClusterList::new(&values));
+                let median = std_dev::percentiles_cluster(&mut values);
 
                 if debug_performance {
                     println!("Median & quadrilles took {}µs", now.elapsed().as_micros());

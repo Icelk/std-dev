@@ -32,6 +32,12 @@ impl<T> Percentile<T> {
             None
         }
     }
+    pub fn map<O>(self, mut f: impl FnMut(T) -> O) -> Percentile<O> {
+        match self {
+            Self::Single(v) => Percentile::Single(f(v)),
+            Self::Mean(a, b) => Percentile::Mean(f(a), f(b)),
+        }
+    }
 }
 impl<T: Clone> Percentile<&T> {
     pub fn clone_inner(&self) -> Percentile<T> {
@@ -81,24 +87,26 @@ macro_rules! impl_percentile_resolv_int {
 }
 impl_percentile_resolv_float!(f32, f64,);
 impl_percentile_resolv_int!(i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize,);
-// impl <T: Deref<Target = Resolv>, Resolv: PercentileResolve> PercentileResolve for T {
-// fn mean(a: Self, b: Self) -> Self {
-// a.deref().mean(b.deref())
-// }
-// }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fraction {
     pub numerator: usize,
     pub denominator: usize,
 }
 impl Fraction {
-    pub fn new(numerator: usize, denominator: usize) -> Self {
+    pub const HALF: Self = Self::new(1, 2);
+    pub const ONE_QUARTER: Self = Self::new(1, 4);
+    pub const THREE_QUARTERS: Self = Self::new(3, 4);
+    /// This MUST be the shortest form.
+    pub const fn new(numerator: usize, denominator: usize) -> Self {
         Self {
             numerator,
             denominator,
         }
     }
 }
+// `TODO` implement Eq and Ord for `Fraction`
+// requires prime factoring (or just converting to floats...)
 
 /// Percentile by sorting.
 ///
@@ -134,21 +142,19 @@ pub fn percentile<T: Ord + Clone>(
         "percentile calculation got too few values"
     );
     let len = values.len();
-    let target_len =
-        (len * target_percentile.numerator / target_percentile.denominator).clamp(0, len);
-    if (len * target_percentile.numerator) % target_percentile.denominator == 1 {
-        quickselect(values, target_len, pivot_fn).clone_inner()
-    } else {
-        Percentile::Mean(
-            quickselect(values, target_len - 1, pivot_fn)
+    let target = percentile_index(len, target_percentile);
+    match target {
+        Percentile::Single(v) => quickselect(values, v, pivot_fn).clone_inner(),
+        Percentile::Mean(a, b) => Percentile::Mean(
+            quickselect(values, a, pivot_fn)
                 .into_single()
                 .unwrap()
                 .clone(),
-            quickselect(values, target_len, pivot_fn)
+            quickselect(values, b, pivot_fn)
                 .into_single()
                 .unwrap()
                 .clone(),
-        )
+        ),
     }
 }
 /// Convenience function for [`percentile`] with a random `pivot_fn`.
@@ -244,6 +250,62 @@ fn median_of_medians_pivot_fn<T: Ord + Clone + PercentileResolve>(l: &mut [T]) -
     Cow::Owned(median_of_medians.resolve())
 }
 
+fn percentile_index(len: usize, percentile: Fraction) -> Percentile<usize> {
+    // median
+    if percentile == Fraction::HALF {
+        if len % 2 == 0 {
+            Percentile::Mean(len / 2, len / 2 - 1)
+        } else {
+            Percentile::Single(len / 2)
+        }
+    } else if percentile == Fraction::ONE_QUARTER || percentile == Fraction::THREE_QUARTERS {
+        percentile_index(len / 2, Fraction::HALF).map(|v| {
+            if percentile == Fraction::THREE_QUARTERS {
+                v + len / 2 + len % 2
+            } else {
+                v
+            }
+        })
+    } else {
+        // ceil(len * percentile) - 1
+        let m = len * percentile.numerator;
+        let rem = m % percentile.denominator;
+        let rem = usize::from(rem > 1);
+        Percentile::Single(m / percentile.denominator + rem - 1)
+    }
+
+    // // get percentile to range of len.
+    // // then, check if percentile.numerator % 1 == 0.0, no decimals. Then, it's even
+    // // else, floor
+    // let denominator_diff = len as f64 / percentile.denominator as f64;
+    // let index = percentile.numerator as f64 * denominator_diff;
+    // let index = if index == 0.0 {
+    // Percentile::Single(0)
+    // } else if index % 1.0 == 0.0 {
+    // let index = index as usize;
+    // Percentile::Mean(index, index - 1)
+    // } else {
+    // Percentile::Single(index as usize)
+    // };
+    // println!("  Choose index {index:?} for len {len}, {percentile:?}");
+    // index
+
+    // // evenly fits
+    // // let f = len as f64;
+    // // if f *
+    // let index = if (len + 1) * percentile.numerator % percentile.denominator != 0 {
+    // let idx = (len + 1) * percentile.numerator / percentile.denominator;
+    // Percentile::Mean(idx - 1, idx)
+    // } else {
+    // // get the closest
+    // // -1 (actually 0.5 as we multiply everything else with 2) to have it repeat in the middle and not
+    // // at the end.
+    // Percentile::Single((((len * 2) - 1) * percentile.numerator) / (percentile.denominator * 2))
+    // };
+    // println!("  Choose index {index:?} for len {len}, {percentile:?}");
+    // index
+}
+
 pub mod cluster {
     use std::ops::{Deref, DerefMut};
 
@@ -266,6 +328,7 @@ pub mod cluster {
             .sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
         let values = values.borrow();
         let len = values.len();
+        // `TODO`: check if this works with percentile
         let even = len * target_percentile.numerator % target_percentile.denominator == 0;
         let target = len * target_percentile.numerator / target_percentile.denominator;
         let mut len = len;
@@ -296,28 +359,21 @@ pub mod cluster {
         pivot_fn: &mut impl FnMut(&ClusterList) -> f64,
     ) -> Percentile<f64> {
         assert!(
-            values.len() >= target_percentile.denominator,
+            values.borrow().len() >= target_percentile.denominator,
             "percentile calculation got too few values"
         );
         let len = values.borrow().len();
-        let target_len =
-            (len * target_percentile.numerator / target_percentile.denominator).clamp(0, len);
-        println!(
-            "len {len}, target {target_len} {}/{}",
-            target_percentile.numerator, target_percentile.denominator
-        );
-        if (len * target_percentile.numerator) % target_percentile.denominator == 1 {
-            println!("odd");
-            quickselect(&mut values.into(), target_len, pivot_fn)
-        } else {
-            Percentile::Mean(
-                quickselect(&mut values.into(), target_len - 1, pivot_fn)
+        let target = percentile_index(len, target_percentile);
+        match target {
+            Percentile::Single(k) => quickselect(&mut values.into(), k, pivot_fn),
+            Percentile::Mean(a, b) => Percentile::Mean(
+                quickselect(&mut values.into(), a, pivot_fn)
                     .into_single()
                     .unwrap(),
-                quickselect(&mut values.into(), target_len, pivot_fn)
+                quickselect(&mut values.into(), b, pivot_fn)
                     .into_single()
                     .unwrap(),
-            )
+            ),
         }
     }
     /// Convenience function for [`percentile`] with a random `pivot_fn`.
@@ -327,12 +383,9 @@ pub mod cluster {
     ) -> Percentile<f64> {
         let mut rng = rand::thread_rng();
         percentile(values, target_percentile, &mut |slice| {
-            println!("Choosing sublist of {:?}", slice);
             let mut idx = rng.sample(rand::distributions::Uniform::new(0_usize, slice.len()));
-            println!("Chose index {idx}");
             for item in slice.list {
                 if idx < item.1 {
-                    println!("That's item {}", item.0);
                     return item.0;
                 }
                 idx -= item.1;
@@ -396,17 +449,12 @@ pub mod cluster {
         let (mut lows, mut highs_inclusive) = include(values, |v| v < pivot);
         let (mut highs, pivots) = include(&mut highs_inclusive, |v| v > pivot);
 
-        println!(
-            "lower {:?}, pivot {:?} high {:?}",
-            lows.list(),
-            pivots.list(),
-            highs.list()
-        );
-
         if k < lows.list().len() {
             quickselect(&mut lows, k, pivot_fn)
         } else if k < lows.list().len() + pivots.list().len() {
             Percentile::Single(pivots[0].0)
+        } else if highs.is_empty() {
+            quickselect(&mut lows, k, pivot_fn)
         } else {
             quickselect(
                 &mut highs,
