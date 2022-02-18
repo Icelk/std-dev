@@ -58,8 +58,8 @@ jobs:
               with:
                   command: rustc
                   args: --release
-            - name: Upload rlib artefact
+            - name: Upload binary artefact (Linux)
               uses: actions/upload-artifact@v2
               with:
-                  name: libkvarn.rlib
+                  name: std-dev
                   path: target/release/std-dev
