@@ -200,15 +200,52 @@ pub fn standard_deviation_cluster(values: &ClusterList) -> StandardDeviationOutp
         mean: m,
     }
 }
+fn std() {
+    let test: &[f64] = &[2343.3, 324.2, 324.523, 0.234234];
+    let std_dev = standard_deviation(test);
+    println!("{std_dev:?}");
+}
+pub fn standard_deviation<
+    'a,
+    T: std::iter::Sum<&'a T>
+        + std::iter::Sum
+        + ops::Div<Output = T>
+        + ops::Sub<Output = T>
+        + ops::Mul<Output = T>
+        + num_traits::identities::One
+        + num_traits::real::Real
+        + num_traits::FromPrimitive
+        + Copy
+        + 'a,
+>(
+    values: &'a [T],
+) -> StandardDeviationOutput<T> {
+    let m = mean(values);
+    let squared_deviations: T = values
+        .iter()
+        .map(|t| {
+            let diff = *t - m;
+
+            diff * diff
+        })
+        .sum();
+    let variance: T = squared_deviations / (T::from_usize( values.len()).expect("Value can not be converted from usize. Check your type in the call to standard_deviation.") - T::one());
+    let std_dev = variance.sqrt();
+
+    StandardDeviationOutput {
+        standard_deviation: std_dev,
+        mean: m,
+    }
+}
 
 /// Get a collection of percentiles from `values`.
 pub fn percentiles_cluster(values: &mut OwnedClusterList) -> PercentilesOutput {
-    let lower = if values.borrow().len() >= 5 {
+    let lower = if values.borrow().len() >= 4 {
         Some(cluster::percentile_rand(values, Fraction::new(1, 4)).resolve())
     } else {
         None
     };
-    let higher = if values.borrow().len() >= 5 {
+    let higher = if values.borrow().len() >= 4 {
         Some(cluster::percentile_rand(values, Fraction::new(3, 4)).resolve())
     } else {
         None
