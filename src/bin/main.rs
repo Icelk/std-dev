@@ -395,10 +395,10 @@ fn main() {
                         }),
                     );
                     plot.scatter("", x_iter.clone().zip(y_iter.clone()));
-                    plot.line(
-                        format!("R² = {:.4}", model.determination(x_iter, y_iter, len)),
-                        std::iter::empty::<(_, _)>(),
-                    );
+                    plot.text(format!(
+                        "R² = {:.4}",
+                        model.determination(x_iter, y_iter, len)
+                    ));
 
                     let mut plotter = plot.build().plot(
                         config.value_of("plot_title").unwrap_or("Regression"),
@@ -413,7 +413,7 @@ fn main() {
                         "{}<style>{}{}</style>{}{}",
                         r##"<svg class="poloto" width="1100" height="500" viewBox="0 0 1100 500" xmlns="http://www.w3.org/2000/svg">"##,
                         poloto::simple_theme::STYLE_CONFIG_DARK_DEFAULT,
-                        r##".poloto2legend { display: none; } .poloto_legend_text[y="200"] { transform: translate(0, -60px); }"##,
+                        r##".poloto_legend_text[y="200"] { transform: translate(0, -60px); }"##,
                         data,
                         poloto::simple_theme::SVG_END,
                     );
