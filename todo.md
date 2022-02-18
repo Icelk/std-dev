@@ -7,7 +7,7 @@
 -   [ ] Slow ( O(n²) ) Theil-Sen estimator
 -   [ ] O(n log n) Theil-Sen estimator (heavy-hitter, very hard)
 -   [x] O(n) median (intermediate difficulty)
--   [ ] All statistical tools for unique lists (not `Cluster`s)
+-   [x] All statistical tools for unique lists (not `Cluster`s)
 -   [ ] Performance logging in regression calculations.
 -   [x] Plotting of data & regressions using [poloto](https://crates.io/crates/poloto) or [plotlib](https://crates.io/crates/plotlib)
 -   [ ] Option for other plot lib.

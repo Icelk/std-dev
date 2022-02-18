@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::hash;
 use std::ops::{Deref, DerefMut};
+use std::{hash, ops};
 
 #[cfg(feature = "regression")]
 #[path = "regression.rs"]
@@ -82,6 +82,8 @@ impl Ord for F64OrdHash {
 /// A list of clusters.
 ///
 /// A cluster is a value and the count.
+///
+/// `m` in `O(m)` means the count of clusters.
 #[derive(Debug)]
 pub struct ClusterList<'a> {
     list: &'a [Cluster],
@@ -106,6 +108,7 @@ impl<'a> ClusterList<'a> {
     pub fn is_empty(&self) -> bool {
         self.list.is_empty()
     }
+    /// O(m)
     pub fn sum(&self) -> f64 {
         let mut sum = 0.0;
         for (v, count) in self.list.iter() {
@@ -172,26 +175,38 @@ impl<'a> ClusterList<'a> {
     }
 }
 
-/// Returned from [`standard_deviation_cluster`] and similar functions.
-pub struct StandardDeviationOutput {
-    pub standard_deviation: f64,
-    pub mean: f64,
+/// Returned from [`standard_deviation`] and similar functions.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct StandardDeviationOutput<T> {
+    pub standard_deviation: T,
+    pub mean: T,
 }
 /// Returned from [`percentiles_cluster`] and similar functions.
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct PercentilesOutput {
     pub median: f64,
     pub lower_quadrille: Option<f64>,
     pub higher_quadrille: Option<f64>,
 }
 
+/// Mean of clustered `values`.
 pub fn mean_cluster(values: &ClusterList) -> f64 {
     values.sum() / values.len() as f64
+}
+/// Mean of `values`.
+pub fn mean<'a, T: std::iter::Sum<&'a T> + ops::Div + num_traits::FromPrimitive>(
+    values: &'a [T],
+) -> <T as std::ops::Div>::Output {
+    values.iter().sum::<T>()
+        / T::from_usize(values.len())
+            .expect("Value can not be converted from usize. Check your type in the call to standard_deviation.")
 }
 /// Get the standard deviation of `values`.
 /// The mean is also returned from this, because it's required to compute the standard deviation.
 ///
 /// O(m), where m is the number of [`Cluster`]s.
-pub fn standard_deviation_cluster(values: &ClusterList) -> StandardDeviationOutput {
+pub fn standard_deviation_cluster(values: &ClusterList) -> StandardDeviationOutput<f64> {
+    std();
     let m = mean_cluster(values);
     let squared_deviations = values.sum_squared_diff(m);
     let variance: f64 = squared_deviations / (values.len() - 1) as f64;
