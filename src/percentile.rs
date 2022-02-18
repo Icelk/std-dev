@@ -266,7 +266,7 @@ fn percentile_index(len: usize, percentile: Fraction) -> Percentile<usize> {
     }
 }
 
-/// Operations on [`Cluster`]s.
+/// Operations on [`crate::Cluster`]s.
 ///
 /// This attempts to implement all functionality of this module but using clusters.
 /// This turned out to be quite difficult.
