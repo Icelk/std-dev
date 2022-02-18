@@ -6,7 +6,7 @@ This codebase is well-documented and comments, in an effort to expose the wonder
 
 We're ever expanding, but for now the following are implemented.
 
--   Standard deviation
+-   Standard deviation, both for generic slices and [clusters](#clusters).
 -   Fast median and mean for large datasets with limited options of values ([clusters](#clusters))
 -   O(n) - linear time - algorithms, both for arbitrary generic lists (any type of number) and clusters:
     -   percentile
@@ -14,8 +14,8 @@ We're ever expanding, but for now the following are implemented.
     -   standard deviation
     -   mean
 -   [Ordinary least square](https://en.wikipedia.org/wiki/Ordinary_least_squares) for linear and polynomial regression
--   Exponential/growth and power regression, with **correct handling of negatives**
--   "best fit" method if you don't know which regression model to use.
+-   Exponential/growth and power regression, with **correct handling of negatives** (most other applications silently ignores them)
+-   "best fit" method if you don't know which regression model to use
 -   (binary) A basic plotting feature to preview the equation in relation to the input data
 
 # Usage
