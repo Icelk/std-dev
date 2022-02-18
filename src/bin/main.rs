@@ -348,8 +348,6 @@ fn main() {
                 print_regression(&model, x_iter.clone(), y_iter.clone(), len, p);
 
                 if config.is_present("plot") {
-                    use poloto::prelude::*;
-
                     let mut num_samples = config
                         .value_of("plot_samples")
                         .map(|s| {

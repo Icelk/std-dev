@@ -192,12 +192,12 @@ impl<'a> ClusterList<'a> {
     }
 }
 
-/// Returned from [`std_dev`].
+/// Returned from [`sums_cluster`] and similar functions.
 pub struct SumOutput {
     pub standard_deviation: f64,
     pub mean: f64,
 }
-/// Returned from [`median`]
+/// Returned from [`percentiles_cluster`] and similar functions.
 pub struct PercentilesOutput {
     pub median: f64,
     pub lower_quadrille: Option<f64>,

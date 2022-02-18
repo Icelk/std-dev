@@ -302,7 +302,10 @@ pub mod cluster {
         let len = values.borrow().len();
         let target_len =
             (len * target_percentile.numerator / target_percentile.denominator).clamp(0, len);
-        println!("len {len}, target {target_len} {}/{}", target_percentile.numerator, target_percentile.denominator);
+        println!(
+            "len {len}, target {target_len} {}/{}",
+            target_percentile.numerator, target_percentile.denominator
+        );
         if (len * target_percentile.numerator) % target_percentile.denominator == 1 {
             println!("odd");
             quickselect(&mut values.into(), target_len, pivot_fn)
@@ -391,9 +394,14 @@ pub mod cluster {
         let pivot = pivot_fn(&values.list());
 
         let (mut lows, mut highs_inclusive) = include(values, |v| v < pivot);
-        let (mut highs,  pivots) = include(&mut highs_inclusive, |v| v > pivot);
+        let (mut highs, pivots) = include(&mut highs_inclusive, |v| v > pivot);
 
-        println!("lower {:?}, pivot {:?} high {:?}", lows.list(), pivots.list(), highs.list());
+        println!(
+            "lower {:?}, pivot {:?} high {:?}",
+            lows.list(),
+            pivots.list(),
+            highs.list()
+        );
 
         if k < lows.list().len() {
             quickselect(&mut lows, k, pivot_fn)

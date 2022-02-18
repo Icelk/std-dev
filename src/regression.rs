@@ -34,6 +34,7 @@ pub use derived::{
     exponential, exponential_ols, power, power_ols, ExponentialCoefficients, PowerCoefficients,
 };
 pub use ols::LinearOls;
+pub use theil_sen::LinearTheilSen;
 
 trait Model: Predictive + Display {}
 impl<T: Predictive + Display> Model for T {}
@@ -1311,8 +1312,9 @@ pub mod theil_sen {
             .flatten()
     }
 
+    pub struct LinearTheilSen;
     /// Naive Theil-Sen implementation, which checks each line.
     ///
     /// O(n²)
-    pub fn slow_linear(){}
+    pub fn slow_linear() {}
 }
