@@ -407,8 +407,18 @@ fn main() {
                         config.value_of("plot_x_axis").unwrap_or("predictors"),
                         config.value_of("plot_y_axis").unwrap_or("outcomes"),
                     );
-                    let data = poloto::disp(|a| plotter.simple_theme(a));
-                    let data = data.to_string();
+                    let data = poloto::disp(|a| plotter.render(a));
+                    // Some scuffed styling to remove bar above R² value, move that closer to the
+                    // equation, and to increase the width of the SVG.
+                    // The styles are very dependent on only having 1 line.
+                    let data = format!(
+                        "{}<style>{}{}</style>{}{}",
+                        r##"<svg class="poloto" width="1100" height="500" viewBox="0 0 1100 500" xmlns="http://www.w3.org/2000/svg">"##,
+                        poloto::simple_theme::STYLE_CONFIG_DARK_DEFAULT,
+                        r##".poloto2legend { display: none; } .poloto_legend_text[y="200"] { transform: translate(0, -60px); }"##,
+                        data,
+                        poloto::simple_theme::SVG_END,
+                    );
 
                     {
                         let path = if let Some(path) = config.value_of("plot_filename") {
