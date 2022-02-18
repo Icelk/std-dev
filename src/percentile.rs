@@ -60,33 +60,11 @@ where
     }
 }
 
-macro_rules! impl_percentile_resolv_float {
-    ($($t: ty, )+) => {
-        $(
-        impl PercentileResolve for $t {
-            fn mean(a: Self, b: Self) -> Self {
-                (a + b) / 2.0
-            }
-        }
-        )+
-    };
+impl<T: num_traits::identities::One + ops::Add<Output = T> + ops::Div<Output = T>> PercentileResolve for T {
+    fn mean(a: Self, b: Self) -> Self {
+        (a+b) / (T::one() + T::one())
+    }
 }
-macro_rules! impl_percentile_resolv_int {
-    ($($t: ty, )+) => {
-        $(
-        /// This implementation may not be exact if the mean of the values does not give an
-        /// integer.
-        /// In that case, the value is rounded down.
-        impl PercentileResolve for $t {
-            fn mean(a: Self, b: Self) -> Self {
-                (a + b) / 2
-            }
-        }
-        )+
-    };
-}
-impl_percentile_resolv_float!(f32, f64,);
-impl_percentile_resolv_int!(i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize,);
 
 /// Matching of this with the percentile is done on a best-effort basis.
 /// Please contribute if you need a more solid system.
