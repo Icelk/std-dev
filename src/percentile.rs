@@ -273,37 +273,6 @@ fn percentile_index(len: usize, percentile: Fraction) -> Percentile<usize> {
         let rem = usize::from(rem > 1);
         Percentile::Single(m / percentile.denominator + rem - 1)
     }
-
-    // // get percentile to range of len.
-    // // then, check if percentile.numerator % 1 == 0.0, no decimals. Then, it's even
-    // // else, floor
-    // let denominator_diff = len as f64 / percentile.denominator as f64;
-    // let index = percentile.numerator as f64 * denominator_diff;
-    // let index = if index == 0.0 {
-    // Percentile::Single(0)
-    // } else if index % 1.0 == 0.0 {
-    // let index = index as usize;
-    // Percentile::Mean(index, index - 1)
-    // } else {
-    // Percentile::Single(index as usize)
-    // };
-    // println!("  Choose index {index:?} for len {len}, {percentile:?}");
-    // index
-
-    // // evenly fits
-    // // let f = len as f64;
-    // // if f *
-    // let index = if (len + 1) * percentile.numerator % percentile.denominator != 0 {
-    // let idx = (len + 1) * percentile.numerator / percentile.denominator;
-    // Percentile::Mean(idx - 1, idx)
-    // } else {
-    // // get the closest
-    // // -1 (actually 0.5 as we multiply everything else with 2) to have it repeat in the middle and not
-    // // at the end.
-    // Percentile::Single((((len * 2) - 1) * percentile.numerator) / (percentile.denominator * 2))
-    // };
-    // println!("  Choose index {index:?} for len {len}, {percentile:?}");
-    // index
 }
 
 pub mod cluster {
