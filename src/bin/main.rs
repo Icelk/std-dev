@@ -300,6 +300,8 @@ fn main() {
                 let x_iter = values.iter().map(|d| d[0]);
                 let y_iter = values.iter().map(|d| d[1]);
 
+                let now = Instant::now();
+
                 let model: DynModel =
                     if config.is_present("power") || config.is_present("exponential") {
                         let mut x: Vec<f64> = x_iter.clone().collect();
@@ -347,7 +349,13 @@ fn main() {
 
                 print_regression(&model, x_iter.clone(), y_iter.clone(), len, p);
 
+                if debug_performance {
+                    println!("Regression analysis took {}µs.", now.elapsed().as_micros());
+                }
+
                 if config.is_present("plot") {
+                    let now = Instant::now();
+
                     let mut num_samples = config
                         .value_of("plot_samples")
                         .map(|s| {
@@ -433,6 +441,9 @@ fn main() {
                     }
 
                     println!("Wrote plot file.");
+                if debug_performance {
+                    println!("Plotting took {}µs.", now.elapsed().as_micros());
+                }
                 }
             }
             Some(_) => unreachable!("invalid subcommand"),
