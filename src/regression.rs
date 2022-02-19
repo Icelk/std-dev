@@ -24,6 +24,11 @@
 //! I reverse the exponentiation to get a linear model. Then, I solve it using the method linked
 //! above. Then, I transform the returned variables to fit the target model.
 //!
+//! This is not very good, as the errors of large values are reduced compared to small values when
+//! taking the logarithm. I have plans to address this bias in the future.
+//! The current behaviour is however still probably the desired behaviour, as small values are
+//! often relatively important to larger.
+//!
 //! Many programs (including LibreOffice Calc) simply discards negative & zero values. I chose to
 //! go the explicit route and add additional terms to satisfy requirements.
 //! This is naturally a fallback, and should be a warning sign your data is bad.
