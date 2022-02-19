@@ -441,9 +441,9 @@ fn main() {
                     }
 
                     println!("Wrote plot file.");
-                if debug_performance {
-                    println!("Plotting took {}µs.", now.elapsed().as_micros());
-                }
+                    if debug_performance {
+                        println!("Plotting took {}µs.", now.elapsed().as_micros());
+                    }
                 }
             }
             Some(_) => unreachable!("invalid subcommand"),
