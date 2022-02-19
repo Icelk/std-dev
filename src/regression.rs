@@ -1305,24 +1305,77 @@ pub mod ols {
     }
 }
 
-/// [Theil-Sen estimator](https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator).
+/// [Theil-Sen estimator](https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator), a robust
+/// linear estimator.
+/// Up to ~27% of values can be *outliers* - erroneous data far from the otherwise good data -
+/// without large effects on the result.
+///
 /// [`LinearTheilSen`] implements [`LinearEstimator`].
 pub mod theil_sen {
-    /// Unique permutations of two elements in the slice.
-    pub fn permutations<T: Copy>(slice: &[T]) -> impl Iterator<Item = (T, T)> + '_ {
-        slice
-            .iter()
+    use super::*;
+    use crate::{percentile, F64OrdHash};
+
+    /// Unique permutations of two elements - an iterator of all the pairs of associated values in the slices.
+    ///
+    /// This function will behave unexpectedly if `s1` and `s2` have different lengths.
+    ///
+    /// Returns an iterator which yields `O(n²)` items.
+    pub fn permutations<'a, T: Copy>(
+        s1: &'a [T],
+        s2: &'a [T],
+    ) -> impl Iterator<Item = ((T, T), (T, T))> + 'a {
+        s1.iter()
+            .zip(s2.iter())
             .enumerate()
-            .map(|(pos, t1)| {
-                let left = &slice[pos..];
-                left.iter().map(|t2| (*t1, *t2))
+            .map(|(pos, (t11, t21))| {
+                let left = &s1[pos..];
+                let left_other = &s2[pos..];
+                left.iter()
+                    .zip(left_other.iter())
+                    .map(|(t12, t22)| ((*t11, *t12), (*t21, *t22)))
             })
             .flatten()
     }
 
+    /// Linear estimation using the Theil-Sen estimatior. This is robust against outliers.
     pub struct LinearTheilSen;
+    impl LinearEstimator for LinearTheilSen {
+        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+            slow_linear(predictors, outcomes)
+        }
+    }
+
     /// Naive Theil-Sen implementation, which checks each line.
     ///
-    /// O(n²)
-    pub fn slow_linear() {}
+    /// Time & space: O(n²)
+    pub fn slow_linear(predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+        assert_eq!(predictors.len(), outcomes.len());
+        let median_slope = {
+            let slopes = permutations(predictors, outcomes).map(|((x1, y1), (x2, y2))| {
+                let slope = (y1 - y2) / (x1 - x2);
+                slope
+            });
+            let mut slopes: Vec<_> = slopes.map(F64OrdHash).collect();
+
+            percentile::median(&mut slopes).map(|v| v.0).resolve()
+        };
+
+        let predictor_median = {
+            let mut predictors = predictors.to_vec();
+            let mut predictors = F64OrdHash::from_mut_f64_slice(&mut predictors);
+            percentile::median(&mut predictors).map(|v| v.0).resolve()
+        };
+        let outcome_median = {
+            let mut outcomes = outcomes.to_vec();
+            let mut outcomes = F64OrdHash::from_mut_f64_slice(&mut outcomes);
+            percentile::median(&mut outcomes).map(|v| v.0).resolve()
+        };
+
+        let intersect = outcome_median - median_slope * predictor_median;
+
+        LinearCoefficients {
+            k: median_slope,
+            m: intersect,
+        }
+    }
 }

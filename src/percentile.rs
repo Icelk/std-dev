@@ -130,16 +130,10 @@ pub fn percentile<T: Ord + Clone>(
     let len = values.len();
     let target = percentile_index(len, target_percentile);
     match target {
-        Percentile::Single(v) => quickselect(values, v, pivot_fn).clone_inner(),
+        Percentile::Single(v) => Percentile::Single(quickselect(values, v, pivot_fn).clone()),
         Percentile::Mean(a, b) => Percentile::Mean(
-            quickselect(values, a, pivot_fn)
-                .into_single()
-                .unwrap()
-                .clone(),
-            quickselect(values, b, pivot_fn)
-                .into_single()
-                .unwrap()
-                .clone(),
+            quickselect(values, a, pivot_fn).clone(),
+            quickselect(values, b, pivot_fn).clone(),
         ),
     }
 }
@@ -164,14 +158,14 @@ fn quickselect<'a, T: Ord + Clone>(
     values: &'a mut [T],
     k: usize,
     pivot_fn: &mut impl FnMut(&mut [T]) -> Cow<'_, T>,
-) -> Percentile<&'a T> {
+) -> &'a T {
     if values.len() == 1 {
         assert_eq!(k, 0);
-        return Percentile::Single(&values[0]);
+        return &values[0];
     }
     if values.len() <= 5 {
-        let naive = naive_percentile(values);
-        return naive;
+        values.sort_unstable();
+        return &values[k];
     }
 
     let pivot = pivot_fn(values);
@@ -183,7 +177,7 @@ fn quickselect<'a, T: Ord + Clone>(
     if k < lows.len() {
         quickselect(lows, k, pivot_fn)
     } else if k < lows.len() + pivots.len() {
-        Percentile::Single(&pivots[0])
+        &pivots[0]
     } else {
         quickselect(highs, k - lows.len() - pivots.len(), pivot_fn)
     }

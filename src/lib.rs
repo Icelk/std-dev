@@ -58,12 +58,31 @@ impl DerefMut for OwnedClusterList {
 
 /// F64 wrapper that implements [`Ord`] and [`Hash`].
 ///
+/// When [`PartialOrd`] returns [`None`], we return [`std::cmp::Ordering::Equal`].
+///
 /// You should probably not be using this unless you know what you're doing.
 #[derive(Debug, Copy, Clone)]
+#[repr(transparent)]
 pub struct F64OrdHash(pub f64);
 impl F64OrdHash {
     fn key(&self) -> u64 {
         self.0.to_bits()
+    }
+    pub fn to_mut_f64_slice(me: &mut [Self]) -> &mut [f64] {
+        // SAFETY: Since we have the same layout (repr(transparent)), this is fine.
+        unsafe { std::mem::transmute(me) }
+    }
+    pub fn from_mut_f64_slice(slice: &mut [f64]) -> &mut [Self] {
+        // SAFETY: Since we have the same layout (repr(transparent)), this is fine.
+        unsafe { std::mem::transmute(slice) }
+    }
+    pub fn to_f64_slice(me: &[Self]) -> &[f64] {
+        // SAFETY: Since we have the same layout (repr(transparent)), this is fine.
+        unsafe { std::mem::transmute(me) }
+    }
+    pub fn from_f64_slice(slice: &[f64]) -> &[Self] {
+        // SAFETY: Since we have the same layout (repr(transparent)), this is fine.
+        unsafe { std::mem::transmute(slice) }
     }
 }
 impl hash::Hash for F64OrdHash {
@@ -87,7 +106,9 @@ impl PartialOrd for F64OrdHash {
 }
 impl Ord for F64OrdHash {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.partial_cmp(&other.0).unwrap()
+        self.0
+            .partial_cmp(&other.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
     }
 }
 
