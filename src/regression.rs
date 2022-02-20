@@ -169,8 +169,10 @@ pub trait LinearEstimator {
 /// - Power and exponentials only if no data is < 1.
 ///   This is due to the sub-optimal behaviour of logarithm with values close to and under 0.
 ///   This restriction might be lifted to just < 1e-9 in the future.
-/// - Power is heavily favoured if `let distance_from_zero = -(0.5 - exponent % 1).abs() + 0.5;
-/// distance_from_zero < 0.15 && -2.5 < exponent < 2.5`
+/// - Power is heavily favoured if `let distance_from_integer = -(0.5 - exponent % 1).abs() + 0.5;
+/// distance_from_integer < 0.15 && -2.5 <= exponent <= 3.5`
+/// - Power is also heavily favoured if the same as above occurs but with the reciprocal of the
+///   exponent. Then, the range 0.5 < exponent.recip() <= 3.5 is considered.
 /// - Exponential favoured if R² > 0.8, which seldom happens with exponential regression.
 /// - Bump the rating of linear, as that's probably what you want.
 /// - 2'nd degree polynomial is only considered if `n > 15`, where `n` is `predictors.len()`.
@@ -232,12 +234,15 @@ pub fn best_fit(
             linear_estimator,
         );
 
-        let distance_from_zero = -(0.5 - power.e % 1.0).abs() + 0.5;
-        let mut power_bump = if distance_from_zero < 0.15 {
-            POWER_BUMP
-        } else {
-            1.0
-        };
+        let distance_from_integer = -(0.5 - power.e % 1.0).abs() + 0.5;
+        let mut power_bump = 1.0;
+        if distance_from_integer < 0.15 && power.e <= 3.5 && power.e >= -2.5 {
+            power_bump *= POWER_BUMP;
+        }
+        let distance_from_fraction = -(0.5 - power.e.recip() % 1.0).abs() + 0.5;
+        if distance_from_fraction < 0.1 && power.e.recip() <= 3.5 && power.e.recip() > 0.5 {
+            power_bump *= POWER_BUMP;
+        }
         let certainty = power.determination_slice(predictors, outcomes);
         if certainty > 0.8 {
             power_bump *= EXPONENTIAL_BUMP;
