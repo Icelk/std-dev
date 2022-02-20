@@ -276,7 +276,7 @@ pub fn include<T>(slice: &mut [T], mut predicate: impl FnMut(&T) -> bool) -> (&m
 /// But probabilistically way slower.
 pub fn median_of_medians<T: Ord + Clone + PercentileResolve>(
     values: &mut [T],
-    target: impl OrderedListIndex
+    target: impl OrderedListIndex,
 ) -> MeanValue<T> {
     percentile(values, target, &mut median_of_medians_pivot_fn)
 }
