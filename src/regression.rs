@@ -148,6 +148,10 @@ impl Display for LinearCoefficients {
 /// Implemented by all methods yielding a linear 2 variable regression (a line).
 pub trait LinearEstimator {
     /// Model the [`LinearCoefficients`] from `predictors` and `outcomes`,
+    ///
+    /// # Panics
+    ///
+    /// The two slices must have the same length.
     fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients;
 }
 
@@ -1348,6 +1352,10 @@ pub mod theil_sen {
     /// Naive Theil-Sen implementation, which checks each line.
     ///
     /// Time & space: O(n²)
+    ///
+    /// # Panics
+    ///
+    /// Panics if `predictors.len() != outcomes.len()`.
     pub fn slow_linear(predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
         assert_eq!(predictors.len(), outcomes.len());
         let median_slope = {

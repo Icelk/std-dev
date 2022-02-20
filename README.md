@@ -31,19 +31,14 @@ This is minimalistic by design, as other programs may be used to produce/modify 
 When using this as a library, I recommend disabling all features (`std-dev = { version = "0.1", default-features = false }`)
 and enabling those you need.
 
-## Bin
-
-This enables the binary to compile.
-
-## Prettier
-
-Makes the binary output prettier. Includes colours and prompts for interactive use.
-
-## Regression
-
-Enables all regression estimators. This requires `nalgebra`, which provides linear algebra.
+- `bin` (default, binary feature): This enables the binary to compile.
+- `prettier` (default, binary feature): Makes the binary output prettier. Includes colours and prompts for interactive use.
+- `regression` (default, library and binary feature): Enables all regression estimators. This requires `nalgebra`, which provides linear algebra.
+- `arbitrary-precision` (default, library feature): Uses arbitrary precision algebra for >10 degree polynomial regression.
 
 # Performance
+
+This library aims to be as fast as possible while maintaining easily readable code.
 
 ## Clusters
 
