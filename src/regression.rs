@@ -1360,8 +1360,8 @@ pub mod theil_sen {
         assert_eq!(predictors.len(), outcomes.len());
         let median_slope = {
             let slopes = permutations(predictors, outcomes).map(|((x1, y1), (x2, y2))| {
-                let slope = (y1 - y2) / (x1 - x2);
-                slope
+                // Δy/Δx
+                (y1 - y2) / (x1 - x2)
             });
             let mut slopes: Vec<_> = slopes.map(F64OrdHash).collect();
 
@@ -1370,13 +1370,13 @@ pub mod theil_sen {
 
         let predictor_median = {
             let mut predictors = predictors.to_vec();
-            let mut predictors = F64OrdHash::from_mut_f64_slice(&mut predictors);
-            percentile::median(&mut predictors).map(|v| v.0).resolve()
+            let predictors = F64OrdHash::from_mut_f64_slice(&mut predictors);
+            percentile::median(predictors).map(|v| v.0).resolve()
         };
         let outcome_median = {
             let mut outcomes = outcomes.to_vec();
-            let mut outcomes = F64OrdHash::from_mut_f64_slice(&mut outcomes);
-            percentile::median(&mut outcomes).map(|v| v.0).resolve()
+            let outcomes = F64OrdHash::from_mut_f64_slice(&mut outcomes);
+            percentile::median(outcomes).map(|v| v.0).resolve()
         };
 
         let intersect = outcome_median - median_slope * predictor_median;
