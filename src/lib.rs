@@ -189,6 +189,21 @@ impl<'a> ClusterList<'a> {
         debug_assert_eq!(len, Self::size(&list));
         OwnedClusterList { list, len }
     }
+    /// Returns the value at `idx`. This iterates the clusters to get the value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if [`Self::is_empty`];
+    pub fn index(&self, mut idx: usize) -> f64 {
+        for (v, c) in self.list {
+            let c = *c;
+            if idx < c {
+                return *v;
+            }
+            idx -= c;
+        }
+        self.list.last().unwrap().0
+    }
 
     /// Groups [`Cluster`]s with the same value together, by adding their count.
     ///
