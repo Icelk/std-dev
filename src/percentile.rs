@@ -200,7 +200,7 @@ pub fn naive_percentile<T: Ord>(values: &mut [T], target: impl OrderedListIndex)
 ///
 /// Consider using [`percentile_rand`] or [`median`].
 ///
-/// `pivot_fn` must return an integer if range [0..values.len()).
+/// `pivot_fn` must return a value from the supplied slice.
 pub fn percentile<T: Ord + Clone>(
     values: &mut [T],
     target: impl OrderedListIndex,
@@ -338,7 +338,7 @@ pub mod cluster {
     ///
     /// Consider using [`percentile_rand`] or [`median`].
     ///
-    /// `pivot_fn` must return an integer if range [0..values.len()).
+    /// `pivot_fn` must return a value from the supplied slice.
     pub fn percentile(
         values: &mut OwnedClusterList,
         target: impl OrderedListIndex,
