@@ -1,7 +1,5 @@
 use std::env;
-use std::fmt::Display;
-use std::io::{stdin, BufRead, Write};
-use std::path::Path;
+use std::io::{stdin, BufRead};
 use std::process::exit;
 use std::str::FromStr;
 use std::time::Instant;
@@ -9,7 +7,12 @@ use std::time::Instant;
 use clap::Arg;
 
 pub use std_dev;
+#[cfg(feature = "regression")]
 use std_dev::regression::{Determination, DynModel, Predictive};
+#[cfg(feature = "regression")]
+use std::fmt::Display;
+#[cfg(feature = "regression")]
+use std::io::Write;
 
 fn parse<T: FromStr>(s: &str) -> Option<T> {
     if let Ok(v) = s.parse() {
@@ -37,7 +40,7 @@ fn input(
     _is_tty: bool,
     debug_performance: bool,
     multiline: bool,
-    last_prompt: &mut Instant,
+    _last_prompt: &mut Instant,
 ) -> Option<InputValue> {
     #[cfg(feature = "pretty")]
     {
@@ -51,7 +54,7 @@ fn input(
             }
             stdout().lock().flush().unwrap();
         }
-        *last_prompt = Instant::now();
+        *_last_prompt = Instant::now();
     }
     let mut s = String::new();
 
@@ -82,14 +85,14 @@ fn input(
             values.push(current);
             #[cfg(feature = "pretty")]
             {
-                if _is_tty && last_prompt.elapsed().as_millis() > 10 {
+                if _is_tty && _last_prompt.elapsed().as_millis() > 10 {
                     use std::io::stdout;
 
                     let next = values.len() + 1;
                     print!("{next} > ");
                     stdout().lock().flush().unwrap();
                 }
-                *last_prompt = Instant::now();
+                *_last_prompt = Instant::now();
             }
         }
         if lines <= 1 {
@@ -428,7 +431,7 @@ fn main() {
 
                     {
                         let path = if let Some(path) = config.value_of("plot_filename") {
-                            let mut path = Path::new(path).to_path_buf();
+                            let mut path = std::path::Path::new(path).to_path_buf();
                             path.set_extension("svg");
                             path
                         } else {

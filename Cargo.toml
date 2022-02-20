@@ -14,10 +14,10 @@ required-features = ["bin"]
 
 [dependencies]
 rand = { version = "0.8" }
+num-traits = { version = "0.2", default-features = false, features = ["std"] }
 
 nalgebra = { version = "0.30", optional = true }
 simba = { version = "0.7", optional = true, default-features = false }
-num-traits = { version = "0.2", optional = true, default-features = false, features = ["std"] }
 approx = { version = "0.5", optional = true, default-features = false }
 
 rug = { version = "1.15", optional = true }
@@ -39,7 +39,7 @@ regression = ["nalgebra", "simba"]
 #
 # Increases max degree of polynomial (with good results).
 # Without this feature, it's basically limited to 10 degrees.
-arbitrary-precision = ["rug", "regression", "num-traits", "approx"]
+arbitrary-precision = ["rug", "regression", "num-traits/std", "approx"]
 
 
 ##
