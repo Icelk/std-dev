@@ -6,13 +6,13 @@ use std::time::Instant;
 
 use clap::Arg;
 
-pub use std_dev;
-#[cfg(feature = "regression")]
-use std_dev::regression::{Determination, DynModel, Predictive};
 #[cfg(feature = "regression")]
 use std::fmt::Display;
 #[cfg(feature = "regression")]
 use std::io::Write;
+pub use std_dev;
+#[cfg(feature = "regression")]
+use std_dev::regression::{Determination, DynModel, Predictive};
 
 fn parse<T: FromStr>(s: &str) -> Option<T> {
     if let Ok(v) = s.parse() {
