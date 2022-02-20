@@ -58,14 +58,17 @@ fn input(
     }
     let mut s = String::new();
 
-    let now = Instant::now();
+    let mut now = Instant::now();
 
     let values = if multiline {
         let mut values = Vec::with_capacity(8);
         let stdin = stdin();
         let stdin = stdin.lock().lines();
-        let mut lines = 0;
+        let mut lines = 0_usize;
         for line in stdin {
+            if lines == 0 {
+                now = Instant::now();
+            }
             lines += 1;
             let line = line.unwrap();
             if line.trim().is_empty() {
@@ -101,6 +104,7 @@ fn input(
         InputValue::List(values)
     } else {
         stdin().lock().read_line(&mut s).unwrap();
+        now = Instant::now();
 
         if s.trim().is_empty() {
             exit(0);
@@ -128,7 +132,7 @@ fn input(
     }
 
     if debug_performance {
-        println!("Parsing took {}µs", now.elapsed().as_micros());
+        println!("Parsing/reading input took {}µs", now.elapsed().as_micros());
     }
     Some(values)
 }
