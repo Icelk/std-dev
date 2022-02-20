@@ -1176,35 +1176,44 @@ pub mod ols {
             Ok(())
         }
     }
-
-    impl Predictive for PolynomialCoefficients {
-        #[cfg(feature = "arbitrary-precision")]
-        fn predict_outcome(&self, predictor: f64) -> f64 {
-            use rug::ops::PowAssign;
-            use rug::Assign;
-            use std::ops::MulAssign;
-
-            let precision = (64 + self.len() * 2) as u32;
-            // let precision = arbitrary_linear_algebra::HARDCODED_PRECISION;
-            let mut out = rug::Float::with_val(precision, 0.0f64);
-            let original_predictor = predictor;
-            let mut predictor = rug::Float::with_val(precision, predictor);
-            for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
-                // assign to never create a new value.
-                predictor.pow_assign(degree as u32);
-                predictor.mul_assign(coefficient);
-                out += &predictor;
-                predictor.assign(original_predictor)
-            }
-            out.to_f64()
-        }
-        #[cfg(not(feature = "arbitrary-precision"))]
-        fn predict_outcome(&self, predictor: f64) -> f64 {
+    impl PolynomialCoefficients {
+        fn naive_predict(&self, predictor: f64) -> f64 {
             let mut out = 0.0;
             for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
                 out += predictor.powi(degree as i32) * coefficient;
             }
             out
+        }
+    }
+
+    impl Predictive for PolynomialCoefficients {
+        #[cfg(feature = "arbitrary-precision")]
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            if self.coefficients.len() < 10 {
+                self.naive_predict(predictor)
+            } else {
+                use rug::ops::PowAssign;
+                use rug::Assign;
+                use std::ops::MulAssign;
+
+                let precision = (64 + self.len() * 2) as u32;
+                // let precision = arbitrary_linear_algebra::HARDCODED_PRECISION;
+                let mut out = rug::Float::with_val(precision, 0.0f64);
+                let original_predictor = predictor;
+                let mut predictor = rug::Float::with_val(precision, predictor);
+                for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
+                    // assign to never create a new value.
+                    predictor.pow_assign(degree as u32);
+                    predictor.mul_assign(coefficient);
+                    out += &predictor;
+                    predictor.assign(original_predictor)
+                }
+                out.to_f64()
+            }
+        }
+        #[cfg(not(feature = "arbitrary-precision"))]
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            self.naive_predict(predictor)
         }
     }
 
