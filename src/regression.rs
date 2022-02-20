@@ -1332,8 +1332,9 @@ pub mod theil_sen {
             .zip(s2.iter())
             .enumerate()
             .map(|(pos, (t11, t21))| {
-                let left = &s1[pos..];
-                let left_other = &s2[pos..];
+                // +1 because we don't want our selfs.
+                let left = &s1[pos + 1..];
+                let left_other = &s2[pos + 1..];
                 left.iter()
                     .zip(left_other.iter())
                     .map(|(t12, t22)| ((*t11, *t12), (*t21, *t22)))
