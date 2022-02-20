@@ -1379,6 +1379,8 @@ pub mod theil_sen {
             percentile::median(outcomes).map(|v| v.0).resolve()
         };
 
+        // y=slope * x + intersect
+        // y - slope * x = intersect
         let intersect = outcome_median - median_slope * predictor_median;
 
         LinearCoefficients {
