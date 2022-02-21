@@ -41,8 +41,8 @@ use std::ops::Deref;
 pub use derived::{
     exponential, exponential_ols, power, power_ols, ExponentialCoefficients, PowerCoefficients,
 };
-pub use ols::LinearOls;
-pub use theil_sen::LinearTheilSen;
+pub use ols::{LinearOls, PolynomialOls};
+pub use theil_sen::{LinearTheilSen, PolynomialTheilSen};
 
 trait Model: Predictive + Display {}
 impl<T: Predictive + Display> Model for T {}
@@ -72,6 +72,14 @@ impl Display for DynModel {
 pub trait Predictive {
     /// Calculates the predicted outcome of `predictor`.
     fn predict_outcome(&self, predictor: f64) -> f64;
+    /// Put this predicative model in a box.
+    /// This is useful for conditionally choosing different models.
+    fn boxed(self) -> DynModel
+    where
+        Self: Sized + Display + 'static,
+    {
+        DynModel::new(self)
+    }
 }
 /// Helper trait to make the [R²](Determination::determination) method take a generic iterator.
 ///
@@ -232,6 +240,14 @@ pub trait LinearEstimator {
     ///
     /// The two slices must have the same length.
     fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients;
+    /// Put this estimator in a box.
+    /// This is useful for conditionally choosing different estimators.
+    fn boxed(self) -> Box<dyn LinearEstimator>
+    where
+        Self: Sized + 'static,
+    {
+        Box::new(self)
+    }
 }
 /// Implemented by all methods yielding a polynomial regression.
 pub trait PolynomialEstimator {
@@ -241,6 +257,14 @@ pub trait PolynomialEstimator {
     ///
     /// The two slices must have the same length.
     fn model(&self, predictors: &[f64], outcomes: &[f64], degree: usize) -> PolynomialCoefficients;
+    /// Put this estimator in a box.
+    /// This is useful for conditionally choosing different estimators.
+    fn boxed(self) -> Box<dyn PolynomialEstimator>
+    where
+        Self: Sized + 'static,
+    {
+        Box::new(self)
+    }
 }
 
 /// Finds the model best fit to the input data.
@@ -1231,9 +1255,19 @@ pub mod ols {
     }
     pub struct PolynomialOls;
     impl PolynomialEstimator for PolynomialOls {
-        fn model(&self, predictors: &[f64], outcomes: &[f64], degree: usize) -> PolynomialCoefficients {
+        fn model(
+            &self,
+            predictors: &[f64],
+            outcomes: &[f64],
+            degree: usize,
+        ) -> PolynomialCoefficients {
             assert_eq!(predictors.len(), outcomes.len());
-            polynomial(predictors.iter().copied(), outcomes.iter().copied(), predictors.len(), degree)
+            polynomial(
+                predictors.iter().copied(),
+                outcomes.iter().copied(),
+                predictors.len(),
+                degree,
+            )
         }
     }
 
@@ -1373,7 +1407,10 @@ pub mod theil_sen {
     }
     impl<'a, T: Copy + Debug> PermutationIter<'a, T> {
         fn new(s1: &'a [T], s2: &'a [T], pairs: usize) -> Self {
-            assert!(pairs > 1, "each coordinate pair must be associated with at least one.");
+            assert!(
+                pairs > 1,
+                "each coordinate pair must be associated with at least one."
+            );
             assert_eq!(s1.len(), s2.len());
             assert!(pairs <= s1.len());
             let iters = Vec::with_capacity(pairs);
@@ -1563,7 +1600,12 @@ pub mod theil_sen {
     /// used.
     pub struct PolynomialTheilSen;
     impl PolynomialEstimator for PolynomialTheilSen {
-        fn model(&self, predictors: &[f64], outcomes: &[f64], degree: usize) -> PolynomialCoefficients {
+        fn model(
+            &self,
+            predictors: &[f64],
+            outcomes: &[f64],
+            degree: usize,
+        ) -> PolynomialCoefficients {
             slow_polynomial(predictors, outcomes, degree)
         }
     }
