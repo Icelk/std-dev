@@ -1636,23 +1636,64 @@ pub mod theil_sen {
             });
             let mut slopes: Vec<_> = slopes.map(F64OrdHash).collect();
 
-            percentile::median(&mut slopes).map(|v| v.0).resolve()
+            percentile::median(&mut slopes).resolve()
         };
 
-        let predictor_median = {
-            let mut predictors = predictors.to_vec();
-            let predictors = F64OrdHash::from_mut_f64_slice(&mut predictors);
-            percentile::median(predictors).map(|v| v.0).resolve()
-        };
-        let outcome_median = {
-            let mut outcomes = outcomes.to_vec();
-            let outcomes = F64OrdHash::from_mut_f64_slice(&mut outcomes);
-            percentile::median(outcomes).map(|v| v.0).resolve()
-        };
-
+        //// Old intersect code. Gets the median of all x components, and the median of all y
+        //// components. We then use that as a point to extrapolate the intersection.
+        //
+        // let predictor_median = {
+        // let mut predictors = predictors.to_vec();
+        // let predictors = F64OrdHash::from_mut_f64_slice(&mut predictors);
+        // percentile::median(predictors).resolve()
+        // };
+        // let outcome_median = {
+        // let mut outcomes = outcomes.to_vec();
+        // let outcomes = F64OrdHash::from_mut_f64_slice(&mut outcomes);
+        // percentile::median(outcomes).resolve()
+        // };
         // y=slope * x + intersect
         // y - slope * x = intersect
-        let intersect = outcome_median - median_slope * predictor_median;
+        // let intersect = outcome_median - median_slope * predictor_median;
+
+        // New intersect. This works by getting the median point by it's y value. Then, we
+        // extrapolate from that.
+        //
+        // This produces much better results, but isn't what's commonly used.
+        //
+        // See https://stats.stackexchange.com/a/96166
+        // for reference.
+        let median = {
+            #[derive(Debug, Clone, Copy)]
+            struct CmpFirst<T, V>(T, V);
+            impl<T: PartialEq, V> PartialEq for CmpFirst<T, V> {
+                fn eq(&self, other: &Self) -> bool {
+                    self.0.eq(&other.0)
+                }
+            }
+            impl<T: PartialEq + Eq, V> Eq for CmpFirst<T, V> {}
+            impl<T: PartialOrd, V> PartialOrd for CmpFirst<T, V> {
+                fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                    self.0.partial_cmp(&other.0)
+                }
+            }
+            impl<T: Ord, V> Ord for CmpFirst<T, V> {
+                fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+                    self.0.cmp(&other.0)
+                }
+            }
+
+            let mut values: Vec<_> = predictors
+                .iter()
+                .zip(outcomes.iter())
+                .map(|(x, y)| CmpFirst(F64OrdHash(*y), *x))
+                .collect();
+            match percentile::median(&mut values).map(|v| (v.1, v.0 .0)) {
+                percentile::MeanValue::Single(v) => v,
+                percentile::MeanValue::Mean(v1, v2) => ((v1.0 + v2.0) / 2.0, (v1.1 + v2.1) / 2.0),
+            }
+        };
+        let intersect = median.1 - median.0 * median_slope;
 
         LinearCoefficients {
             k: median_slope,
