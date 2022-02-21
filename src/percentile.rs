@@ -23,6 +23,11 @@ pub enum MeanValue<T> {
     /// The percentile lies between two values. Take the mean of these to get the percentile.
     Mean(T, T),
 }
+impl MeanValue<crate::F64OrdHash> {
+    pub fn resolve(self) -> f64 {
+        self.map(|v| v.0).resolve()
+    }
+}
 impl<T: PercentileResolve> MeanValue<T> {
     pub fn resolve(self) -> T {
         PercentileResolve::compute(self)
