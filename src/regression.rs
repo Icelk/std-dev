@@ -1705,6 +1705,7 @@ pub mod theil_sen {
     mod tests {
         use super::*;
 
+        #[test]
         fn permutations_eq_1() {
             let s1 = [1., 2., 3., 4., 5.];
             let s2 = [2., 4., 6., 8., 10.];
