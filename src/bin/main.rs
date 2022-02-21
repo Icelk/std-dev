@@ -12,7 +12,9 @@ use std::fmt::Display;
 use std::io::Write;
 pub use std_dev;
 #[cfg(feature = "regression")]
-use std_dev::regression::{Determination, DynModel, Predictive};
+use std_dev::regression::{
+    Determination, DynModel, LinearEstimator, PolynomialEstimator, Predictive,
+};
 
 fn parse<T: FromStr>(s: &str) -> Option<T> {
     if let Ok(v) = s.parse() {
@@ -217,6 +219,11 @@ fn main() {
                 If any of the predictors are below 1, x becomes (x+c), where c is an offset to the predictors. This is due to the arithmetic issue of taking the log of negative numbers and 0. \
                 A negative addition term will be appended if any of the outcomes are below 1.")
             )
+            .arg(Arg::new("theil_sen")
+                .long("theil-sen")
+                .short('t')
+                .help("Use the Theil-Sen estimator instead of OLS.")
+            )
             .arg(Arg::new("plot")
                 .long("plot")
                 .help("Plots the regression and input variables in a SVG.")
@@ -306,14 +313,13 @@ fn main() {
                 let len = values.len();
                 let x_iter = values.iter().map(|d| d[0]);
                 let y_iter = values.iter().map(|d| d[1]);
+                let mut x: Vec<f64> = x_iter.clone().collect();
+                let mut y: Vec<f64> = y_iter.clone().collect();
 
                 let now = Instant::now();
 
                 let model: DynModel =
                     if config.is_present("power") || config.is_present("exponential") {
-                        let mut x: Vec<f64> = x_iter.clone().collect();
-                        let mut y: Vec<f64> = y_iter.clone().collect();
-
                         if config.is_present("power") {
                             let coefficients = std_dev::regression::power_ols(&mut x, &mut y);
                             DynModel::new(coefficients)
@@ -336,14 +342,27 @@ fn main() {
                             continue 'main;
                         }
 
-                        let coefficients = std_dev::regression::ols::polynomial(
-                            x_iter.clone(),
-                            y_iter.clone(),
-                            len,
-                            degree,
-                        );
+                        if degree == 1 {
+                            let estimator = {
+                                if config.is_present("theil_sen") {
+                                    std_dev::regression::LinearTheilSen.boxed()
+                                } else {
+                                    std_dev::regression::LinearOls.boxed()
+                                }
+                            };
 
-                        DynModel::new(coefficients)
+                            estimator.model(&x, &y).boxed()
+                        } else {
+                            let estimator = {
+                                if config.is_present("theil_sen") {
+                                    std_dev::regression::PolynomialTheilSen.boxed()
+                                } else {
+                                    std_dev::regression::PolynomialOls.boxed()
+                                }
+                            };
+
+                            estimator.model(&x, &y, degree).boxed()
+                        }
                     } else {
                         let mut predictors: Vec<f64> = x_iter.clone().collect();
                         let mut outcomes: Vec<f64> = y_iter.clone().collect();
