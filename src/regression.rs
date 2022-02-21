@@ -1715,6 +1715,16 @@ pub mod theil_sen {
     ) -> PolynomialCoefficients {
         assert_eq!(predictors.len(), outcomes.len());
 
+        // if degree == 0, get median.
+        if degree == 0 {
+            let mut outcomes = outcomes.to_vec();
+            let constant = crate::median(F64OrdHash::from_mut_f64_slice(&mut outcomes)).resolve();
+            return PolynomialCoefficients {
+                coefficients: vec![constant],
+            };
+        }
+
+        // init
         let mut iter = permutations_generic(predictors, outcomes, degree + 1);
         let mut coefficients = Vec::with_capacity(degree + 1);
         let permutations_count = permutation_count(predictors.len(), degree + 1)
