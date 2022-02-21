@@ -445,7 +445,7 @@ fn main() {
                     // The styles are very dependent on only having 1 line.
                     let data = format!(
                         "{}<style>{}{}</style>{}{}",
-                        r##"<svg class="poloto" width="1100" height="500" viewBox="0 0 1100 500" xmlns="http://www.w3.org/2000/svg">"##,
+                        poloto::disp_const(|w| poloto::simple_theme::write_header(w, 1100.0, 500.0)),
                         poloto::simple_theme::STYLE_CONFIG_DARK_DEFAULT,
                         r##".poloto_legend_text[y="200"] { transform: translate(0, -60px); }"##,
                         data,
