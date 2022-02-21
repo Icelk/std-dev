@@ -1373,6 +1373,7 @@ pub mod theil_sen {
     }
     impl<'a, T: Copy + Debug> PermutationIter<'a, T> {
         fn new(s1: &'a [T], s2: &'a [T], pairs: usize) -> Self {
+            assert!(pairs > 1, "each coordinate pair must be associated with at least one.");
             assert_eq!(s1.len(), s2.len());
             assert!(pairs <= s1.len());
             let iters = Vec::with_capacity(pairs);
@@ -1395,7 +1396,6 @@ pub mod theil_sen {
             }
             me.values_backup.push(me.values_backup[0]);
             me.values = Some(me.values_backup.clone());
-            println!("Me {:?}", me);
             me
         }
         /// Please hand the buffer back after each iteration. This greatly reduces allocations.
