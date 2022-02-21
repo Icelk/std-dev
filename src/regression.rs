@@ -1273,7 +1273,11 @@ pub mod ols {
 
             let t = design.transpose();
             let outcomes = nalgebra::DMatrix::from_iterator(len, 1, outcomes);
-            let result = ((&t * &design).try_inverse().unwrap() * &t) * outcomes;
+            let result = ((&t * &design)
+                .try_inverse()
+                .unwrap_or_else(|| (&t * &design).pseudo_inverse(0e-8).unwrap())
+                * &t)
+                * outcomes;
 
             PolynomialCoefficients {
                 coefficients: result.iter().copied().collect(),
