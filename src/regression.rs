@@ -1490,6 +1490,7 @@ pub mod theil_sen {
     /// This function will behave unexpectedly if `s1` and `s2` have different lengths.
     ///
     /// Returns an iterator which yields `O(n²)` items.
+    // `TODO`: Make these return indices.
     pub fn permutations<'a, T: Copy>(
         s1: &'a [T],
         s2: &'a [T],

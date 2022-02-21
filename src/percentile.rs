@@ -8,10 +8,12 @@
 //! You should probably use [`percentile_rand`].
 //!
 //! The linear time algoritms are implementations following [this blogpost](https://rcoh.me/posts/linear-time-median-finding/).
-
 use rand::Rng;
 use std::borrow::Cow;
 use std::ops;
+
+// `TODO`: Add `_by` functions (e.g. `percentile_by`) to implement comparator functions without
+// wrappers.
 
 /// The result of a percentile (e.g. median) lookup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
