@@ -1330,8 +1330,179 @@ pub mod ols {
 ///
 /// [`LinearTheilSen`] implements [`LinearEstimator`].
 pub mod theil_sen {
+    use std::fmt::Debug;
+
     use super::*;
     use crate::{percentile, F64OrdHash};
+
+    type SliceIter<'a, T> = std::iter::Copied<std::slice::Iter<'a, T>>;
+    type ZippedSliceIter<'a, T> =
+        std::iter::Enumerate<std::iter::Zip<SliceIter<'a, T>, SliceIter<'a, T>>>;
+    pub struct PermutationIterBuffer<T> {
+        buf: Vec<(T, T)>,
+    }
+    impl<T> Deref for PermutationIterBuffer<T> {
+        type Target = [(T, T)];
+        fn deref(&self) -> &Self::Target {
+            &self.buf
+        }
+    }
+    #[derive(Debug)]
+    pub struct PermutationIter<'a, T> {
+        s1: &'a [T],
+        s2: &'a [T],
+        iters: Vec<usize>,
+        values: Option<Vec<(T, T)>>,
+        values_backup: Vec<(T, T)>,
+        pairs: usize,
+    }
+    impl<'a, T: Copy + Debug> PermutationIter<'a, T> {
+        fn new(s1: &'a [T], s2: &'a [T], pairs: usize) -> Self {
+            assert_eq!(s1.len(), s2.len());
+            assert!(pairs <= s1.len());
+            let iters = Vec::with_capacity(pairs);
+            let values_backup = Vec::with_capacity(pairs);
+            let mut me = Self {
+                s1,
+                s2,
+                iters,
+                values: None,
+                values_backup,
+                pairs,
+            };
+            for i in 0..pairs {
+                // (+ not last) as usize since we set default values below.
+                me.iters.push(i + usize::from(i + 1 < pairs) - 1);
+                // me.iters.push(i +1);
+                // me.iters.push(
+                // s1[i..]
+                // .iter()
+                // .copied()
+                // .zip(s2[i..].iter().copied())
+                // .enumerate(),
+                // );
+            }
+            #[allow(clippy::needless_range_loop)] // clarity
+            for i in 0..pairs - 1 {
+                me.values_backup.push((me.s1[i], me.s2[i]));
+            }
+            me.values_backup.push(me.values_backup[0]);
+            me.values = Some(me.values_backup.clone());
+            println!("Me {:?}", me);
+            me
+        }
+        /// Please hand the buffer back after each iteration. This greatly reduces allocations.
+        pub fn give_buffer(&mut self, buf: PermutationIterBuffer<T>) {
+            debug_assert!(self.values.is_none());
+            self.values = Some(buf.buf)
+        }
+        /// Collects the permutations in `pairs` number of [`Vec`]s, with `returned[i]` containing
+        /// the i-th pair.
+        pub fn collect_by_index(mut self) -> Vec<Vec<(T, T)>> {
+            let mut vecs = Vec::with_capacity(self.pairs);
+            for _ in 0..self.pairs {
+                vecs.push(Vec::new());
+            }
+            while let Some(buf) = self.next() {
+                for (pos, pair) in buf.iter().enumerate() {
+                    vecs[pos].push(*pair)
+                }
+
+                self.give_buffer(buf);
+            }
+            vecs
+        }
+        pub fn collect_len<const LEN: usize>(mut self) -> Vec<[(T, T); LEN]> {
+            let mut vec = Vec::new();
+            while let Some(buf) = self.next() {
+                let array = <[(T, T); LEN]>::try_from(&*buf).expect(
+                    "tried to collect with set len, but permutations returned different len",
+                );
+                vec.push(array);
+                self.give_buffer(buf);
+            }
+            vec
+        }
+    }
+    impl<'a, T: Copy + Debug> Iterator for PermutationIter<'a, T> {
+        type Item = PermutationIterBuffer<T>;
+        fn next(&mut self) -> Option<Self::Item> {
+            for (num, iter) in self.iters.iter_mut().enumerate().rev() {
+                if num == 0 {
+                    println!("  !!Iterating base.");
+                }
+                *iter += 1;
+                // optimization - if items left is less than what is required to fill the "tower"
+                // of succeeding indices, we return
+                if self.s1.len() - *iter <= self.pairs - 1 - num {
+                    continue;
+                }
+                // SAFETY: they are the same length, so getting from one guarantees we can get
+                // the same index from the other one.
+                // println!("Iterating {num}, {}", *iter);
+                let next = self
+                    .s1
+                    .get(*iter)
+                    .map(|v1| (*v1, *unsafe { self.s2.get_unchecked(*iter) }));
+
+                if let Some(next) = next {
+                    let values = &mut self.values_backup;
+                    if let Some(v) = self.values.as_mut() {
+                        v[num] = next
+                    }
+                    values[num] = next;
+                    if num + 1 == self.pairs {
+                        let values = self.values.take().unwrap_or_else(|| {
+                            println!("Allocation!");
+                            self.values_backup.clone()
+                        });
+                        println!("  Returning {:?}", values);
+                        return Some(PermutationIterBuffer { buf: values });
+                    } else {
+                        println!("Resetting from {} to {}", num + 1, self.pairs - 1);
+                        println!("Reset, iters {:?}", self.iters);
+                        println!("Values {:?}", values);
+                        #[allow(clippy::needless_range_loop)] // clarity
+                        for i in num + 1..self.pairs {
+                            // start is 1+ the previous?
+                            let new = self.iters[i - 1] + usize::from(i + 1 < self.pairs);
+                            println!("Setting new {new} at iter {}", i);
+                            self.iters[i] = new;
+                            // fix values for lower iterators than the top one
+                            if i + 1 < self.pairs {
+                                if new >= self.s1.len() {
+                                    println!("Stopping.");
+                                    // return None;
+                                    continue;
+                                }
+                                println!("Setting values");
+                                values[i] = (self.s1[new], self.s2[new]);
+                                if let Some(v) = self.values.as_mut() {
+                                    v[i] = (self.s1[new], self.s2[new]);
+                                }
+                            }
+                        }
+                        println!("Reset, iters {:?}", self.iters);
+                        return self.next();
+                    }
+                }
+            }
+            None
+        }
+    }
+    /// The returned iterator is a bit funky.
+    /// It returns a buffer, which at all costs should be reused.
+    /// This could either be done using a while loop
+    /// (e.g. `while let Some(buf) = iter.next() { iter.give_buffer(buf) }`)
+    /// or any of the [built-in methods](PermutationIter).
+    /// If you know the length at compile time, use [`PermutationIter::collect_len`].
+    pub fn permutations_generic<'a, T: Copy + Debug>(
+        s1: &'a [T],
+        s2: &'a [T],
+        pairs: usize,
+    ) -> PermutationIter<'a, T> {
+        PermutationIter::new(s1, s2, pairs)
+    }
 
     /// Unique permutations of two elements - an iterator of all the pairs of associated values in the slices.
     ///
@@ -1351,7 +1522,7 @@ pub mod theil_sen {
                 let left_other = &s2[pos + 1..];
                 left.iter()
                     .zip(left_other.iter())
-                    .map(|(t12, t22)| ((*t11, *t12), (*t21, *t22)))
+                    .map(|(t12, t22)| ((*t11, *t21), (*t12, *t22)))
             })
             .flatten()
     }
@@ -1401,6 +1572,124 @@ pub mod theil_sen {
         LinearCoefficients {
             k: median_slope,
             m: intersect,
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn permutation_count(elements: usize, pairs: usize) -> usize {
+            (factorial(elements as _)
+                / (factorial(pairs as _) * factorial((elements - pairs) as _))) as usize
+        }
+        fn factorial(num: u128) -> u128 {
+            match num {
+                0 | 1 => 1,
+                _ => factorial(num - 1) * num,
+            }
+        }
+
+        #[test]
+        fn permutations_eq_1() {
+            let s1 = [1., 2., 3., 4., 5.];
+            let s2 = [2., 4., 6., 8., 10.];
+
+            let permutations1 = permutations(&s1, &s2).map(|(x, y)| [x, y]).collect::<Vec<_>>();
+            let permutations2 = permutations_generic(&s1, &s2, 2)
+                .collect_len();
+
+            assert_eq!(permutations1, permutations2);
+        }
+        #[test]
+        fn permutations_eq_2() {
+            use rand::Rng;
+
+            let mut s1 = [0.0; 20];
+            let mut s2 = [0.0; 20];
+
+            let mut rng = rand::thread_rng();
+            rng.fill(&mut s1);
+            rng.fill(&mut s2);
+
+            let permutations1 = permutations(&s1, &s2)
+                .map(|(x, y)| [x, y])
+                .collect::<Vec<_>>();
+            let permutations2 = permutations_generic(&s1, &s2, 2).collect_len();
+
+            assert_eq!(permutations1, permutations2);
+        }
+        #[test]
+        fn permutations_len_3() {
+            let s1 = [1., 2., 3., 4., 5.];
+            let s2 = [2., 4., 6., 8., 10.];
+
+            let permutations = permutations_generic(&s1, &s2, 3).collect_len::<3>();
+
+            let expected: &[[(f64, f64); 3]] = &[
+                [(1.0, 2.0), (2.0, 4.0), (3.0, 6.0)],
+                [(1.0, 2.0), (2.0, 4.0), (4.0, 8.0)],
+                [(1.0, 2.0), (2.0, 4.0), (5.0, 10.0)],
+                [(1.0, 2.0), (3.0, 6.0), (4.0, 8.0)],
+                [(1.0, 2.0), (3.0, 6.0), (5.0, 10.0)],
+                [(1.0, 2.0), (4.0, 8.0), (5.0, 10.0)],
+                [(2.0, 4.0), (3.0, 6.0), (4.0, 8.0)],
+                [(2.0, 4.0), (3.0, 6.0), (5.0, 10.0)],
+                [(2.0, 4.0), (4.0, 8.0), (5.0, 10.0)],
+                [(3.0, 6.0), (4.0, 8.0), (5.0, 10.0)],
+            ];
+
+            assert_eq!(expected.len(), permutation_count(5, 3));
+
+            assert_eq!(permutations, expected,);
+        }
+        #[test]
+        fn permutations_len_4_1() {
+            let s1 = [1., 2., 3., 4., 5.];
+            let s2 = [2., 4., 6., 8., 10.];
+
+            let permutations = permutations_generic(&s1, &s2, 4).collect_len();
+
+            let expected: &[[(f64, f64); 4]] = &[
+                [(1.0, 2.0), (2.0, 4.0), (3.0, 6.0), (4.0, 8.0)],
+                [(1.0, 2.0), (2.0, 4.0), (3.0, 6.0), (5.0, 10.0)],
+                [(1.0, 2.0), (2.0, 4.0), (4.0, 8.0), (5.0, 10.0)],
+                [(1.0, 2.0), (3.0, 6.0), (4.0, 8.0), (5.0, 10.0)],
+                [(2.0, 4.0), (3.0, 6.0), (4.0, 8.0), (5.0, 10.0)],
+            ];
+
+            assert_eq!(expected.len(), permutation_count(5, 4));
+
+            assert_eq!(permutations, expected,);
+        }
+        #[test]
+        fn permutations_len_4_2() {
+            let s1 = [1., 2., 3., 4., 5., 6.];
+            let s2 = [2., 4., 6., 8., 10., 12.];
+
+            let permutations = permutations_generic(&s1, &s2, 4).collect_len();
+
+            let expected: &[[(f64, f64); 4]] = &[
+                [(1.0, 2.0), (2.0, 4.0), (3.0, 6.0), (4.0, 8.0)],
+                [(1.0, 2.0), (2.0, 4.0), (3.0, 6.0), (5.0, 10.0)],
+                [(1.0, 2.0), (2.0, 4.0), (3.0, 6.0), (6.0, 12.0)],
+                [(1.0, 2.0), (2.0, 4.0), (4.0, 8.0), (5.0, 10.0)],
+                [(1.0, 2.0), (2.0, 4.0), (4.0, 8.0), (6.0, 12.0)],
+                [(1.0, 2.0), (2.0, 4.0), (5.0, 10.0), (6.0, 12.0)],
+                [(1.0, 2.0), (3.0, 6.0), (4.0, 8.0), (5.0, 10.0)],
+                [(1.0, 2.0), (3.0, 6.0), (4.0, 8.0), (6.0, 12.0)],
+                [(1.0, 2.0), (3.0, 6.0), (5.0, 10.0), (6.0, 12.0)],
+                [(1.0, 2.0), (4.0, 8.0), (5.0, 10.0), (6.0, 12.0)],
+                [(2.0, 4.0), (3.0, 6.0), (4.0, 8.0), (5.0, 10.0)],
+                [(2.0, 4.0), (3.0, 6.0), (4.0, 8.0), (6.0, 12.0)],
+                [(2.0, 4.0), (3.0, 6.0), (5.0, 10.0), (6.0, 12.0)],
+                [(2.0, 4.0), (4.0, 8.0), (5.0, 10.0), (6.0, 12.0)],
+                [(3.0, 6.0), (4.0, 8.0), (5.0, 10.0), (6.0, 12.0)],
+            ];
+
+            assert_eq!(expected.len(), permutation_count(6, 4));
+
+            assert_eq!(permutations, expected,);
         }
     }
 }
