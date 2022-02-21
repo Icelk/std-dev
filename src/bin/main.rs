@@ -503,24 +503,50 @@ fn main() {
                     println!("Median & quadrilles took {}µs", now.elapsed().as_micros());
                 }
 
-                println!(
-                    "Standard deviation: {}, mean: {}, median: {}{}{}",
-                    mean.standard_deviation,
-                    mean.mean,
-                    median.median,
-                    median
-                        .lower_quadrille
-                        .as_ref()
-                        .map_or("".into(), |quadrille| {
-                            format!(", lower quadrille: {}", *quadrille)
-                        }),
-                    median
-                        .higher_quadrille
-                        .as_ref()
-                        .map_or("".into(), |quadrille| {
-                            format!(", upper quadrille: {}", *quadrille)
-                        }),
-                );
+                let p = matches
+                    .value_of("precision")
+                    .map(|s| s.parse::<usize>().expect("we check this using clap"));
+
+                if let Some(p) = p {
+                    println!(
+                        "Standard deviation: {:.5$}, mean: {:.5$}, median: {:.5$}{}{}",
+                        mean.standard_deviation,
+                        mean.mean,
+                        median.median,
+                        median
+                            .lower_quadrille
+                            .as_ref()
+                            .map_or("".into(), |quadrille| {
+                                format!(", lower quadrille: {:.1$}", *quadrille, p)
+                            }),
+                        median
+                            .higher_quadrille
+                            .as_ref()
+                            .map_or("".into(), |quadrille| {
+                                format!(", upper quadrille: {:.1$}", *quadrille, p)
+                            }),
+                        p
+                    );
+                } else {
+                    println!(
+                        "Standard deviation: {}, mean: {}, median: {}{}{}",
+                        mean.standard_deviation,
+                        mean.mean,
+                        median.median,
+                        median
+                            .lower_quadrille
+                            .as_ref()
+                            .map_or("".into(), |quadrille| {
+                                format!(", lower quadrille: {}", *quadrille)
+                            }),
+                        median
+                            .higher_quadrille
+                            .as_ref()
+                            .map_or("".into(), |quadrille| {
+                                format!(", upper quadrille: {}", *quadrille)
+                            }),
+                    );
+                }
             }
         }
     }
