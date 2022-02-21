@@ -304,7 +304,11 @@ pub fn best_fit(
     /// Used to partially mitigate [overfitting](https://en.wikipedia.org/wiki/Overfitting).
     ///
     /// Multiplicative
-    const THIRD_DEGREE_DISADVANTAGE: f64 = 0.94;
+    const SECOND_DEGREE_DISADVANTAGE: f64 = 0.94;
+    /// Used to partially mitigate [overfitting](https://en.wikipedia.org/wiki/Overfitting).
+    ///
+    /// Multiplicative
+    const THIRD_DEGREE_DISADVANTAGE: f64 = 0.9;
 
     let mut best: Option<(DynModel, f64)> = None;
     macro_rules! update_best {
@@ -396,7 +400,7 @@ pub fn best_fit(
             2,
         );
 
-        update_best!(degree_2);
+        update_best!(degree_2, e, e * SECOND_DEGREE_DISADVANTAGE);
     }
     if predictors.len() > 50 {
         let degree_3 = ols::polynomial(
