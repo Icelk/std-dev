@@ -222,7 +222,7 @@ fn main() {
             .arg(Arg::new("theil_sen")
                 .long("theil-sen")
                 .short('t')
-                .help("Use the Theil-Sen estimator instead of OLS.")
+                .help("Use the Theil-Sen estimator instead of OLS for linear and polynomial (slow). Not applied when -l or -d aren't supplied.")
             )
             .arg(Arg::new("plot")
                 .long("plot")
