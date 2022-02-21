@@ -1763,7 +1763,6 @@ pub mod theil_sen {
                         coefficients.get_unchecked_mut(0).push(intersect);
                     }
 
-                    // println!("OLS tooook {}ns", now.elapsed().as_nanos());
                     iter.give_buffer(buf);
                 }
             }
@@ -1821,6 +1820,9 @@ pub mod theil_sen {
 
         let mut result = Vec::with_capacity(degree + 1);
         for mut coefficients in coefficients {
+            // `TODO`: Choose coefficients for a single point (the median of the coefficient with the
+            // highest exponential) instead of then median of the single values.
+
             // 5x boost in performance here when using `O(n)` median instead of sorting. (when
             // using args `-t -d5` with a detaset of 40 values).
             let median = crate::median(F64OrdHash::from_mut_f64_slice(&mut coefficients)).resolve();
