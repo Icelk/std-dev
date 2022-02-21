@@ -1499,6 +1499,30 @@ pub mod theil_sen {
     ) -> PermutationIter<'a, T> {
         PermutationIter::new(s1, s2, pairs)
     }
+    /// Lower-bound estimate (up to `pairs > 20`), within 100x (which is quite good for factorials).
+    ///
+    /// The original equation is `elements!/(pairs! (elements - pairs)!)`
+    pub fn estimate_permutation_count(elements: usize, pairs: usize) -> f64 {
+        let e = elements as f64;
+        let p = pairs as f64;
+        e.powf(p) / (p.powf(p - 0.8))
+    }
+    /// An exact count of permutations.
+    /// Returns [`None`] if the arithmetic can't fit.
+    pub fn permutation_count(elements: usize, pairs: usize) -> Option<usize> {
+        fn factorial(num: u128) -> Option<u128> {
+            match num {
+                0 | 1 => Some(1),
+                _ => factorial(num - 1)?.checked_mul(num),
+            }
+        }
+
+        Some(
+            (factorial(elements as _)?
+                / (factorial(pairs as _)?.checked_mul(factorial((elements - pairs) as _)?))?)
+                as usize,
+        )
+    }
 
     /// Unique permutations of two elements - an iterator of all the pairs of associated values in the slices.
     ///
@@ -1531,6 +1555,14 @@ pub mod theil_sen {
             slow_linear(predictors, outcomes)
         }
     }
+    /// Polynomial estimation using the Theil-Sen estimatior. Very slow and should probably not be
+    /// used.
+    pub struct PolynomialTheilSen;
+    impl PolynomialEstimator for PolynomialTheilSen {
+        fn model(&self, predictors: &[f64], outcomes: &[f64], degree: usize) -> PolynomialCoefficients {
+            slow_polynomial(predictors, outcomes, degree)
+        }
+    }
 
     /// Naive Theil-Sen implementation, which checks each line.
     ///
@@ -1541,6 +1573,8 @@ pub mod theil_sen {
     /// Panics if `predictors.len() != outcomes.len()`.
     pub fn slow_linear(predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
         assert_eq!(predictors.len(), outcomes.len());
+        // I've isolated the `Vec`s into blocks so we only have one at a time.
+        // This reduces memory usage.
         let median_slope = {
             let slopes = permutations(predictors, outcomes).map(|((x1, y1), (x2, y2))| {
                 // Δy/Δx
@@ -1572,22 +1606,59 @@ pub mod theil_sen {
         }
     }
 
+    /// Naive Theil-Sen implementation, which checks each polynomial.
+    ///
+    /// Time & space: O(n^m) where m is `degree + 1`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `predictors.len() != outcomes.len()`.
+    pub fn slow_polynomial(
+        predictors: &[f64],
+        outcomes: &[f64],
+        degree: usize,
+    ) -> PolynomialCoefficients {
+        assert_eq!(predictors.len(), outcomes.len());
+
+        let mut iter = permutations_generic(predictors, outcomes, degree + 1);
+        let mut coefficients = Vec::with_capacity(degree + 1);
+        let permutations_count = permutation_count(predictors.len(), degree + 1)
+            .unwrap_or_else(|| estimate_permutation_count(predictors.len(), degree + 1) as usize);
+        for _ in 0..degree + 1 {
+            // now that's a lot of allocations.
+            coefficients.push(Vec::with_capacity(permutations_count))
+        }
+        while let Some(buf) = iter.next() {
+            debug_assert_eq!(buf.len(), degree + 1);
+
+            let predictors = buf.iter().map(|(x, _)| *x);
+            let outcomes = buf.iter().map(|(_, y)| *y);
+
+            let polynomial = ols::polynomial(predictors, outcomes, degree + 1, degree);
+            for (pos, coefficient) in polynomial.iter().enumerate() {
+                coefficients[pos].push(*coefficient);
+            }
+
+            iter.give_buffer(buf);
+        }
+
+        let mut result = Vec::with_capacity(degree + 1);
+
+        for mut coefficients in coefficients {
+            let median = crate::median(F64OrdHash::from_mut_f64_slice(&mut coefficients))
+                .map(|v| v.0)
+                .resolve();
+            result.push(median);
+        }
+        PolynomialCoefficients {
+            coefficients: result,
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
 
-        fn permutation_count(elements: usize, pairs: usize) -> usize {
-            (factorial(elements as _)
-                / (factorial(pairs as _) * factorial((elements - pairs) as _))) as usize
-        }
-        fn factorial(num: u128) -> u128 {
-            match num {
-                0 | 1 => 1,
-                _ => factorial(num - 1) * num,
-            }
-        }
-
-        #[test]
         fn permutations_eq_1() {
             let s1 = [1., 2., 3., 4., 5.];
             let s2 = [2., 4., 6., 8., 10.];
@@ -1637,7 +1708,7 @@ pub mod theil_sen {
                 [(3.0, 6.0), (4.0, 8.0), (5.0, 10.0)],
             ];
 
-            assert_eq!(expected.len(), permutation_count(5, 3));
+            assert_eq!(expected.len(), permutation_count(5, 3).unwrap());
 
             assert_eq!(permutations, expected,);
         }
@@ -1656,7 +1727,7 @@ pub mod theil_sen {
                 [(2.0, 4.0), (3.0, 6.0), (4.0, 8.0), (5.0, 10.0)],
             ];
 
-            assert_eq!(expected.len(), permutation_count(5, 4));
+            assert_eq!(expected.len(), permutation_count(5, 4).unwrap());
 
             assert_eq!(permutations, expected,);
         }
@@ -1685,7 +1756,7 @@ pub mod theil_sen {
                 [(3.0, 6.0), (4.0, 8.0), (5.0, 10.0), (6.0, 12.0)],
             ];
 
-            assert_eq!(expected.len(), permutation_count(6, 4));
+            assert_eq!(expected.len(), permutation_count(6, 4).unwrap());
 
             assert_eq!(permutations, expected,);
         }
