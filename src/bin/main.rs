@@ -401,7 +401,7 @@ fn main() {
                             let y = model.predict_outcome(x);
                             Some((
                                 x,
-                                if (y_min..y_max).contains(&y) {
+                                if num_samples < 5 || (y_min..y_max).contains(&y) {
                                     y
                                 } else {
                                     return None;
