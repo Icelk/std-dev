@@ -1479,6 +1479,7 @@ pub mod theil_sen {
     }
     impl<'a, T: Copy + Debug> Iterator for PermutationIter<'a, T> {
         type Item = PermutationIterBuffer<T>;
+        #[inline]
         fn next(&mut self) -> Option<Self::Item> {
             for (num, iter) in self.iters.iter_mut().enumerate().rev() {
                 *iter += 1;
@@ -1489,7 +1490,6 @@ pub mod theil_sen {
                 }
                 // SAFETY: they are the same length, so getting from one guarantees we can get
                 // the same index from the other one.
-                // println!("Iterating {num}, {}", *iter);
                 let next = self
                     .s1
                     .get(*iter)
@@ -1498,9 +1498,13 @@ pub mod theil_sen {
                 if let Some(next) = next {
                     let values = &mut self.values_backup;
                     if let Some(v) = self.values.as_mut() {
-                        v[num] = next
+                        // SAFETY: The length of `self.values`, `self.values_backup`, and
+                        // `self.iters` are equal. Therefore, we can get the index of `self.values`
+                        // returned by the enumeration of `self.iters`
+                        *unsafe { v.get_unchecked_mut(num) } = next;
                     }
-                    values[num] = next;
+                    // SAFETY: See above.
+                    *unsafe { values.get_unchecked_mut(num) } = next;
                     if num + 1 == self.pairs {
                         let values = self
                             .values
@@ -1678,26 +1682,97 @@ pub mod theil_sen {
             // now that's a lot of allocations.
             coefficients.push(Vec::with_capacity(permutations_count))
         }
-        while let Some(buf) = iter.next() {
-            debug_assert_eq!(buf.len(), degree + 1);
 
-            let predictors = buf.iter().map(|(x, _)| *x);
-            let outcomes = buf.iter().map(|(_, y)| *y);
+        // Hard-code some of these to increase performance. Else, we'd have to do linear algebra to
+        // get the equation of a straight line from two points.
+        match degree {
+            0 => unreachable!("we handled this above"),
+            1 => {
+                while let Some(buf) = iter.next() {
+                    debug_assert_eq!(buf.len(), 2);
 
-            let polynomial = ols::polynomial(predictors, outcomes, degree + 1, degree);
-            for (pos, coefficient) in polynomial.iter().enumerate() {
-                coefficients[pos].push(*coefficient);
+                    // SAFETY: I know the buf is going to be exactly 2 in length, as I wrote the
+                    // code.
+                    let p1 = unsafe { buf.get_unchecked(0) };
+                    let x1 = p1.0;
+                    let y1 = p1.1;
+                    let p2 = unsafe { buf.get_unchecked(1) };
+                    let x2 = p2.0;
+                    let y2 = p2.1;
+
+                    let slope = (y1 - y2) / (x1 - x2);
+                    // y=slope * x + intersect
+                    // intersect = y - slope * x
+                    // we could've chosen p2, it doesn't matter.
+                    let intersect = y1 - x1 * slope;
+
+                    // SAFETY: we pushed these vecs to `coefficients` above.
+                    unsafe {
+                        coefficients.get_unchecked_mut(1).push(slope);
+                        coefficients.get_unchecked_mut(0).push(intersect);
+                    }
+
+                    // println!("OLS tooook {}ns", now.elapsed().as_nanos());
+                    iter.give_buffer(buf);
+                }
             }
+            // 10x performance increase with this hand-crafted technique.
+            2 => {
+                while let Some(buf) = iter.next() {
+                    debug_assert_eq!(buf.len(), 3);
 
-            iter.give_buffer(buf);
+                    // SAFETY: I know the buf is going to be exactly 2 in length, as I wrote the
+                    // code.
+                    let p1 = unsafe { buf.get_unchecked(0) };
+                    let x1 = p1.0;
+                    let y1 = p1.1;
+                    let p2 = unsafe { buf.get_unchecked(1) };
+                    let x2 = p2.0;
+                    let y2 = p2.1;
+                    let p3 = unsafe { buf.get_unchecked(2) };
+                    let x3 = p3.0;
+                    let y3 = p3.1;
+
+                    // Derived from the systems of equation this makes.
+                    // See https://math.stackexchange.com/a/680695
+
+                    let a = (x1 * (y3 - y2) + x2 * (y1 - y3) + x3 * (y2 - y1))
+                        / ((x1 - x2) * (x1 - x3) * (x2 - x3));
+                    let b = (y2 - y1) / (x2 - x1) - a * (x1 + x2);
+                    let c = y1 - a * x1 * x1 - b * x1;
+
+                    // SAFETY: we pushed these vecs to `coefficients` above.
+                    unsafe {
+                        coefficients.get_unchecked_mut(2).push(a);
+                        coefficients.get_unchecked_mut(1).push(b);
+                        coefficients.get_unchecked_mut(0).push(c);
+                    }
+
+                    iter.give_buffer(buf);
+                }
+            }
+            _ => {
+                while let Some(buf) = iter.next() {
+                    debug_assert_eq!(buf.len(), degree + 1);
+
+                    let predictors = buf.iter().map(|(x, _)| *x);
+                    let outcomes = buf.iter().map(|(_, y)| *y);
+
+                    let polynomial = ols::polynomial(predictors, outcomes, degree + 1, degree);
+                    for (pos, coefficient) in polynomial.iter().enumerate() {
+                        coefficients[pos].push(*coefficient);
+                    }
+
+                    iter.give_buffer(buf);
+                }
+            }
         }
 
         let mut result = Vec::with_capacity(degree + 1);
-
         for mut coefficients in coefficients {
-            let median = crate::median(F64OrdHash::from_mut_f64_slice(&mut coefficients))
-                .map(|v| v.0)
-                .resolve();
+            // 5x boost in performance here when using `O(n)` median instead of sorting. (when
+            // using args `-t -d5` with a detaset of 40 values).
+            let median = crate::median(F64OrdHash::from_mut_f64_slice(&mut coefficients)).resolve();
             result.push(median);
         }
         PolynomialCoefficients {
