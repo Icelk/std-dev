@@ -145,14 +145,102 @@ impl Display for LinearCoefficients {
     }
 }
 
+/// The length of the inner vector is `degree + 1`.
+///
+/// The inner list is in order of smallest exponent to largest: `[0, 2, 1]` means `y = 1x² + 2x + 0`.
+#[derive(Debug)]
+pub struct PolynomialCoefficients {
+    coefficients: Vec<f64>,
+}
+impl Deref for PolynomialCoefficients {
+    type Target = [f64];
+    fn deref(&self) -> &Self::Target {
+        &self.coefficients
+    }
+}
+impl Display for PolynomialCoefficients {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut first = true;
+        for (degree, mut coefficient) in self.coefficients.iter().copied().enumerate().rev() {
+            if !first {
+                if coefficient.is_sign_positive() {
+                    write!(f, " + ")?;
+                } else {
+                    write!(f, " - ")?;
+                    coefficient = -coefficient;
+                }
+            }
+
+            let p = f.precision().unwrap_or(5);
+
+            match degree {
+                0 => write!(f, "{coefficient:.*}", p)?,
+                1 => write!(f, "{coefficient:.*}x", p)?,
+                _ => write!(f, "{coefficient:.0$}x^{degree:.0$}", p)?,
+            }
+
+            first = false;
+        }
+        Ok(())
+    }
+}
+impl PolynomialCoefficients {
+    fn naive_predict(&self, predictor: f64) -> f64 {
+        let mut out = 0.0;
+        for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
+            out += predictor.powi(degree as i32) * coefficient;
+        }
+        out
+    }
+}
+impl Predictive for PolynomialCoefficients {
+    #[cfg(feature = "arbitrary-precision")]
+    fn predict_outcome(&self, predictor: f64) -> f64 {
+        if self.coefficients.len() < 10 {
+            self.naive_predict(predictor)
+        } else {
+            use rug::ops::PowAssign;
+            use rug::Assign;
+            use std::ops::MulAssign;
+
+            let precision = (64 + self.len() * 2) as u32;
+            // let precision = arbitrary_linear_algebra::HARDCODED_PRECISION;
+            let mut out = rug::Float::with_val(precision, 0.0f64);
+            let original_predictor = predictor;
+            let mut predictor = rug::Float::with_val(precision, predictor);
+            for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
+                // assign to never create a new value.
+                predictor.pow_assign(degree as u32);
+                predictor.mul_assign(coefficient);
+                out += &predictor;
+                predictor.assign(original_predictor)
+            }
+            out.to_f64()
+        }
+    }
+    #[cfg(not(feature = "arbitrary-precision"))]
+    fn predict_outcome(&self, predictor: f64) -> f64 {
+        self.naive_predict(predictor)
+    }
+}
+
 /// Implemented by all methods yielding a linear 2 variable regression (a line).
 pub trait LinearEstimator {
-    /// Model the [`LinearCoefficients`] from `predictors` and `outcomes`,
+    /// Model the [`LinearCoefficients`] from `predictors` and `outcomes`.
     ///
     /// # Panics
     ///
     /// The two slices must have the same length.
     fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients;
+}
+/// Implemented by all methods yielding a polynomial regression.
+pub trait PolynomialEstimator {
+    /// Model the [`PolynomialCoefficients`] from `predictors` and `outcomes` with `degree`.
+    ///
+    /// # Panics
+    ///
+    /// The two slices must have the same length.
+    fn model(&self, predictors: &[f64], outcomes: &[f64], degree: usize) -> PolynomialCoefficients;
 }
 
 /// Finds the model best fit to the input data.
@@ -1141,84 +1229,11 @@ pub mod ols {
             }
         }
     }
-
-    /// The length of the inner vector is `degree + 1`.
-    ///
-    /// The inner list is in order of smallest exponent to largest: `[0, 2, 1]` means `y = 1x² + 2x + 0`.
-    #[derive(Debug)]
-    pub struct PolynomialCoefficients {
-        coefficients: Vec<f64>,
-    }
-    impl Deref for PolynomialCoefficients {
-        type Target = [f64];
-        fn deref(&self) -> &Self::Target {
-            &self.coefficients
-        }
-    }
-    impl Display for PolynomialCoefficients {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            let mut first = true;
-            for (degree, mut coefficient) in self.coefficients.iter().copied().enumerate().rev() {
-                if !first {
-                    if coefficient.is_sign_positive() {
-                        write!(f, " + ")?;
-                    } else {
-                        write!(f, " - ")?;
-                        coefficient = -coefficient;
-                    }
-                }
-
-                let p = f.precision().unwrap_or(5);
-
-                match degree {
-                    0 => write!(f, "{coefficient:.*}", p)?,
-                    1 => write!(f, "{coefficient:.*}x", p)?,
-                    _ => write!(f, "{coefficient:.0$}x^{degree:.0$}", p)?,
-                }
-
-                first = false;
-            }
-            Ok(())
-        }
-    }
-    impl PolynomialCoefficients {
-        fn naive_predict(&self, predictor: f64) -> f64 {
-            let mut out = 0.0;
-            for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
-                out += predictor.powi(degree as i32) * coefficient;
-            }
-            out
-        }
-    }
-
-    impl Predictive for PolynomialCoefficients {
-        #[cfg(feature = "arbitrary-precision")]
-        fn predict_outcome(&self, predictor: f64) -> f64 {
-            if self.coefficients.len() < 10 {
-                self.naive_predict(predictor)
-            } else {
-                use rug::ops::PowAssign;
-                use rug::Assign;
-                use std::ops::MulAssign;
-
-                let precision = (64 + self.len() * 2) as u32;
-                // let precision = arbitrary_linear_algebra::HARDCODED_PRECISION;
-                let mut out = rug::Float::with_val(precision, 0.0f64);
-                let original_predictor = predictor;
-                let mut predictor = rug::Float::with_val(precision, predictor);
-                for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
-                    // assign to never create a new value.
-                    predictor.pow_assign(degree as u32);
-                    predictor.mul_assign(coefficient);
-                    out += &predictor;
-                    predictor.assign(original_predictor)
-                }
-                out.to_f64()
-            }
-        }
-        #[cfg(not(feature = "arbitrary-precision"))]
-        fn predict_outcome(&self, predictor: f64) -> f64 {
-            self.naive_predict(predictor)
+    pub struct PolynomialOls;
+    impl PolynomialEstimator for PolynomialOls {
+        fn model(&self, predictors: &[f64], outcomes: &[f64], degree: usize) -> PolynomialCoefficients {
+            assert_eq!(predictors.len(), outcomes.len());
+            polynomial(predictors.iter().copied(), outcomes.iter().copied(), predictors.len(), degree)
         }
     }
 
