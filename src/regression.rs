@@ -1330,14 +1330,10 @@ pub mod ols {
 ///
 /// [`LinearTheilSen`] implements [`LinearEstimator`].
 pub mod theil_sen {
-    use std::fmt::Debug;
-
     use super::*;
     use crate::{percentile, F64OrdHash};
+    use std::fmt::Debug;
 
-    type SliceIter<'a, T> = std::iter::Copied<std::slice::Iter<'a, T>>;
-    type ZippedSliceIter<'a, T> =
-        std::iter::Enumerate<std::iter::Zip<SliceIter<'a, T>, SliceIter<'a, T>>>;
     pub struct PermutationIterBuffer<T> {
         buf: Vec<(T, T)>,
     }
@@ -1371,16 +1367,8 @@ pub mod theil_sen {
                 pairs,
             };
             for i in 0..pairs {
-                // (+ not last) as usize since we set default values below.
+                // `+ (not last) as usize` since the last iterator doesn't first read vec.
                 me.iters.push(i + usize::from(i + 1 < pairs) - 1);
-                // me.iters.push(i +1);
-                // me.iters.push(
-                // s1[i..]
-                // .iter()
-                // .copied()
-                // .zip(s2[i..].iter().copied())
-                // .enumerate(),
-                // );
             }
             #[allow(clippy::needless_range_loop)] // clarity
             for i in 0..pairs - 1 {
@@ -1412,6 +1400,11 @@ pub mod theil_sen {
             }
             vecs
         }
+        /// Collects `LEN` pairs from this iterator in a [`Vec`].
+        ///
+        /// # Panics
+        ///
+        /// `LEN` must be the same length as `pairs` supplied to [`permutations_generic`].
         pub fn collect_len<const LEN: usize>(mut self) -> Vec<[(T, T); LEN]> {
             let mut vec = Vec::new();
             while let Some(buf) = self.next() {
@@ -1428,9 +1421,6 @@ pub mod theil_sen {
         type Item = PermutationIterBuffer<T>;
         fn next(&mut self) -> Option<Self::Item> {
             for (num, iter) in self.iters.iter_mut().enumerate().rev() {
-                if num == 0 {
-                    println!("  !!Iterating base.");
-                }
                 *iter += 1;
                 // optimization - if items left is less than what is required to fill the "tower"
                 // of succeeding indices, we return
@@ -1452,37 +1442,28 @@ pub mod theil_sen {
                     }
                     values[num] = next;
                     if num + 1 == self.pairs {
-                        let values = self.values.take().unwrap_or_else(|| {
-                            println!("Allocation!");
-                            self.values_backup.clone()
-                        });
-                        println!("  Returning {:?}", values);
+                        let values = self
+                            .values
+                            .take()
+                            .unwrap_or_else(|| self.values_backup.clone());
                         return Some(PermutationIterBuffer { buf: values });
                     } else {
-                        println!("Resetting from {} to {}", num + 1, self.pairs - 1);
-                        println!("Reset, iters {:?}", self.iters);
-                        println!("Values {:?}", values);
                         #[allow(clippy::needless_range_loop)] // clarity
                         for i in num + 1..self.pairs {
                             // start is 1+ the previous?
                             let new = self.iters[i - 1] + usize::from(i + 1 < self.pairs);
-                            println!("Setting new {new} at iter {}", i);
                             self.iters[i] = new;
                             // fix values for lower iterators than the top one
                             if i + 1 < self.pairs {
                                 if new >= self.s1.len() {
-                                    println!("Stopping.");
-                                    // return None;
                                     continue;
                                 }
-                                println!("Setting values");
                                 values[i] = (self.s1[new], self.s2[new]);
                                 if let Some(v) = self.values.as_mut() {
                                     v[i] = (self.s1[new], self.s2[new]);
                                 }
                             }
                         }
-                        println!("Reset, iters {:?}", self.iters);
                         return self.next();
                     }
                 }
@@ -1595,9 +1576,10 @@ pub mod theil_sen {
             let s1 = [1., 2., 3., 4., 5.];
             let s2 = [2., 4., 6., 8., 10.];
 
-            let permutations1 = permutations(&s1, &s2).map(|(x, y)| [x, y]).collect::<Vec<_>>();
-            let permutations2 = permutations_generic(&s1, &s2, 2)
-                .collect_len();
+            let permutations1 = permutations(&s1, &s2)
+                .map(|(x, y)| [x, y])
+                .collect::<Vec<_>>();
+            let permutations2 = permutations_generic(&s1, &s2, 2).collect_len();
 
             assert_eq!(permutations1, permutations2);
         }
