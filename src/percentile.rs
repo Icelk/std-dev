@@ -11,9 +11,7 @@
 #[cfg(feature = "percentile-rand")]
 use rand::Rng;
 use std::borrow::Cow;
-
-// `TODO`: Add `_by` functions (e.g. `percentile_by`) to implement comparator functions without
-// wrappers.
+use std::cmp;
 
 /// The result of a percentile (e.g. median) lookup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -322,30 +320,50 @@ impl OrderedListIndex for KthLargest {
 
 /// Percentile by sorting.
 ///
+/// See [`naive_percentile_by`] for support for a custom comparator function.
+///
 /// # Performance & scalability
 ///
 /// This will be very quick for small sets.
 /// O(n) performance when `values.len() < 5`, else O(n log n).
 pub fn naive_percentile<T: Ord>(values: &mut [T], target: impl OrderedListIndex) -> MeanValue<&T> {
+    naive_percentile_by(values, target, &mut |a, b| a.cmp(b))
+}
+/// Same as [`naive_percentile`] but with a custom comparator function.
+pub fn naive_percentile_by<'a, T>(
+    values: &'a mut [T],
+    target: impl OrderedListIndex,
+    compare: &mut impl FnMut(&T, &T) -> cmp::Ordering,
+) -> MeanValue<&'a T> {
     debug_assert!(!values.is_empty(), "we must have more than 0 values!");
-    values.sort();
+    values.sort_by(compare);
     target.index(values.len()).map(|idx| &values[idx])
 }
 /// quickselect algorithm
 ///
 /// Consider using [`percentile_rand`] or [`median`].
+/// See [`percentile_by`] for support for a custom comparator function.
 ///
 /// `pivot_fn` must return a value from the supplied slice.
-pub fn percentile<T: Ord + Clone>(
+pub fn percentile<T: Clone + Ord>(
     values: &mut [T],
     target: impl OrderedListIndex,
     pivot_fn: &mut impl FnMut(&mut [T]) -> Cow<'_, T>,
 ) -> MeanValue<T> {
+    percentile_by(values, target, pivot_fn, &mut |a, b| a.cmp(b))
+}
+/// Same as [`percentile`] but with a custom comparator function.
+pub fn percentile_by<T: Clone>(
+    values: &mut [T],
+    target: impl OrderedListIndex,
+    mut pivot_fn: &mut impl FnMut(&mut [T]) -> Cow<'_, T>,
+    mut compare: &mut impl FnMut(&T, &T) -> cmp::Ordering,
+) -> MeanValue<T> {
     target
         .index(values.len())
-        .map(|v| quickselect(values, v, pivot_fn).clone())
+        .map(|v| quickselect(values, v, &mut pivot_fn, &mut compare).clone())
 }
-/// Convenience function for [`percentile`] with a random `pivot_fn`.
+/// Convenience function for [`percentile`] with [`pivot_fn::rand`].
 #[cfg(feature = "percentile-rand")]
 pub fn percentile_rand<T: Ord + Clone>(
     values: &mut [T],
@@ -353,45 +371,70 @@ pub fn percentile_rand<T: Ord + Clone>(
 ) -> MeanValue<T> {
     percentile(values, target, &mut pivot_fn::rand())
 }
-/// Convenience function for [`percentile`] with the 50% mark as the target and [`pivot_fn::rand`]
-/// (if the `percentile-rand` feature is enabled, else [`pivot_fn::middle`]).
-pub fn median<T: Ord + Clone>(values: &mut [T]) -> MeanValue<T> {
+/// Get the value at `target` in `values`.
+/// Uses the best method available ([`percentile_rand`] if feature `percentile-rand` is enabled,
+/// else [`pivot_fn::middle`])
+pub fn percentile_default_pivot<T: Ord + Clone>(
+    values: &mut [T],
+    target: impl OrderedListIndex,
+) -> MeanValue<T> {
+    percentile_default_pivot_by(values, target, &mut |a, b| a.cmp(b))
+}
+/// Same as [`percentile_default_pivot`] but with a custom comparator function.
+pub fn percentile_default_pivot_by<T: Clone>(
+    values: &mut [T],
+    target: impl OrderedListIndex,
+    compare: &mut impl FnMut(&T, &T) -> cmp::Ordering,
+) -> MeanValue<T> {
     #[cfg(feature = "percentile-rand")]
     {
-        percentile_rand(values, Fraction::HALF)
+        percentile_by(values, target, &mut pivot_fn::rand(), compare)
     }
     #[cfg(not(feature = "percentile-rand"))]
     {
-        percentile(values, Fraction::HALF, &mut pivot_fn::middle())
+        percentile_by(values, target, &mut pivot_fn::middle(), compare)
     }
 }
+
+/// Convenience function for [`percentile`] with the 50% mark as the target and [`pivot_fn::rand`]
+/// (if the `percentile-rand` feature is enabled, else [`pivot_fn::middle`]).
+///
+/// See [`percentile_default_pivot_by`] for supplying a custom comparator function.
+/// This is critical for types which does not implement [`Ord`] (e.g. f64).
+pub fn median<T: Ord + Clone>(values: &mut [T]) -> MeanValue<T> {
+    percentile_default_pivot(values, Fraction::HALF)
+}
 /// Low level function used by this module.
-fn quickselect<'a, T: Ord + Clone>(
-    values: &'a mut [T],
+fn quickselect<T: Clone>(
+    values: &mut [T],
     k: usize,
-    pivot_fn: &mut impl FnMut(&mut [T]) -> Cow<'_, T>,
-) -> &'a T {
+    mut pivot_fn: impl FnMut(&mut [T]) -> Cow<'_, T>,
+    mut compare: impl FnMut(&T, &T) -> cmp::Ordering,
+) -> &T {
     if values.len() == 1 {
         assert_eq!(k, 0);
         return &values[0];
     }
     if values.len() <= 5 {
-        values.sort_unstable();
+        values.sort_unstable_by(compare);
         return &values[k];
     }
 
     let pivot = pivot_fn(values);
     let pivot = pivot.into_owned();
 
-    let (lows, highs_inclusive) = split_include(values, |v| *v < pivot);
-    let (highs, pivots) = split_include(highs_inclusive, |v| *v > pivot);
+    let (lows, highs_inclusive) =
+        split_include(values, |v| compare(v, &pivot) == cmp::Ordering::Less);
+    let (highs, pivots) = split_include(highs_inclusive, |v| {
+        compare(v, &pivot) == cmp::Ordering::Greater
+    });
 
     if k < lows.len() {
-        quickselect(lows, k, pivot_fn)
+        quickselect(lows, k, pivot_fn, compare)
     } else if k < lows.len() + pivots.len() {
         &pivots[0]
     } else {
-        quickselect(highs, k - lows.len() - pivots.len(), pivot_fn)
+        quickselect(highs, k - lows.len() - pivots.len(), pivot_fn, compare)
     }
 }
 /// Moves items in the slice and splits it so the first returned slice contains all elements where
@@ -420,7 +463,20 @@ pub fn median_of_medians<T: Ord + Clone + PercentileResolve>(
     values: &mut [T],
     target: impl OrderedListIndex,
 ) -> MeanValue<T> {
-    percentile(values, target, &mut pivot_fn::median_of_medians())
+    median_of_medians_by(values, target, &|a, b| a.cmp(b))
+}
+/// Same as [`median_of_medians`] but with a custom comparator function.
+pub fn median_of_medians_by<T: Clone + PercentileResolve>(
+    values: &mut [T],
+    target: impl OrderedListIndex,
+    mut compare: &impl Fn(&T, &T) -> cmp::Ordering,
+) -> MeanValue<T> {
+    percentile_by(
+        values,
+        target,
+        &mut pivot_fn::median_of_medians(compare),
+        &mut compare,
+    )
 }
 
 pub mod pivot_fn {
@@ -502,8 +558,9 @@ pub mod pivot_fn {
     ///
     /// Picks a good pivot within l, a list of numbers.
     /// This algorithm runs in O(n) time.
-    pub fn median_of_medians<T: Ord + Clone + PercentileResolve>(
-    ) -> impl FnMut(&mut [T]) -> Cow<'_, T> {
+    pub fn median_of_medians<T: Clone + PercentileResolve>(
+        mut compare: &impl Fn(&T, &T) -> cmp::Ordering,
+    ) -> impl FnMut(&mut [T]) -> Cow<'_, T> + '_ {
         move |l| {
             let len = l.len();
             assert!(len > 0);
@@ -516,14 +573,18 @@ pub mod pivot_fn {
             // takes constant time. Since we have n/5 chunks, this operation
             // is also O(n)
             let sorted_chunks = chunks.map(|c| {
-                c.sort_unstable();
+                c.sort_unstable_by(compare);
                 c
             });
 
             let medians = sorted_chunks.map(|chunk| chunk[2].clone());
             let mut medians: Vec<_> = medians.collect();
-            let median_of_medians =
-                percentile(&mut medians, Fraction::new(1, 2), &mut median_of_medians());
+            let median_of_medians = percentile_by(
+                &mut medians,
+                Fraction::new(1, 2),
+                &mut median_of_medians(compare),
+                &mut compare,
+            );
             Cow::Owned(median_of_medians.resolve())
         }
     }
@@ -561,6 +622,8 @@ pub mod cluster {
 
     /// Percentile by sorting.
     ///
+    /// See [`naive_percentile_by`] for support for a custom comparator function.
+    ///
     /// # Performance & scalability
     ///
     /// This will be very quick for small sets.
@@ -569,9 +632,15 @@ pub mod cluster {
         values: &mut OwnedClusterList,
         target: impl OrderedListIndex,
     ) -> MeanValue<f64> {
-        values
-            .list
-            .sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        naive_percentile_by(values, target, &mut crate::F64OrdHash::f64_cmp)
+    }
+    /// Same as [`naive_percentile`] but with a custom comparator function.
+    pub fn naive_percentile_by(
+        values: &mut OwnedClusterList,
+        target: impl OrderedListIndex,
+        compare: &mut impl FnMut(f64, f64) -> cmp::Ordering,
+    ) -> MeanValue<f64> {
+        values.list.sort_unstable_by(|a, b| compare(a.0, b.0));
         let values = values.borrow();
         let len = values.len();
         target.index(len).map(|idx| *values.index(idx))
@@ -579,6 +648,7 @@ pub mod cluster {
     /// quickselect algorithm
     ///
     /// Consider using [`percentile_rand`] or [`median`].
+    /// See [`percentile_by`] for support for a custom comparator function.
     ///
     /// `pivot_fn` must return a value from the supplied slice.
     pub fn percentile(
@@ -586,9 +656,20 @@ pub mod cluster {
         target: impl OrderedListIndex,
         pivot_fn: &mut impl FnMut(&ClusterList) -> f64,
     ) -> MeanValue<f64> {
+        percentile_by(values, target, pivot_fn, &mut |a, b| {
+            crate::F64OrdHash::f64_cmp(a, b)
+        })
+    }
+    /// Same as [`percentile`] but with a custom comparator function.
+    pub fn percentile_by(
+        values: &mut OwnedClusterList,
+        target: impl OrderedListIndex,
+        mut pivot_fn: &mut impl FnMut(&ClusterList) -> f64,
+        mut compare: &mut impl FnMut(f64, f64) -> cmp::Ordering,
+    ) -> MeanValue<f64> {
         target
             .index(values.borrow().len())
-            .map(|idx| quickselect(&mut values.into(), idx, pivot_fn))
+            .map(|idx| quickselect(&mut values.into(), idx, &mut pivot_fn, &mut compare))
     }
     /// Convenience function for [`percentile`] with [`pivot_fn::rand`].
     #[cfg(feature = "percentile-rand")]
@@ -598,18 +679,40 @@ pub mod cluster {
     ) -> MeanValue<f64> {
         percentile(values, target, &mut pivot_fn::rand())
     }
-    /// Convenience function for [`percentile`] with the 50% mark as the target and [`pivot_fn::rand`]
-    /// (if the `percentile-rand` feature is enabled, else [`pivot_fn::middle`]).
-    pub fn median(values: &mut OwnedClusterList) -> MeanValue<f64> {
+    /// Get the value at `target` in `values`.
+    /// Uses the best method available ([`percentile_rand`] if feature `percentile-rand` is enabled,
+    /// else [`pivot_fn::middle`])
+    pub fn percentile_default_pivot(
+        values: &mut OwnedClusterList,
+        target: impl OrderedListIndex,
+    ) -> MeanValue<f64> {
+        percentile_default_pivot_by(values, target, &mut crate::F64OrdHash::f64_cmp)
+    }
+    /// Same as [`percentile_default_pivot`] but with a custom comparator function.
+    pub fn percentile_default_pivot_by(
+        values: &mut OwnedClusterList,
+        target: impl OrderedListIndex,
+        compare: &mut impl FnMut(f64, f64) -> cmp::Ordering,
+    ) -> MeanValue<f64> {
         #[cfg(feature = "percentile-rand")]
         {
-            percentile_rand(values, Fraction::HALF)
+            percentile_by(values, target, &mut pivot_fn::rand(), compare)
         }
         #[cfg(not(feature = "percentile-rand"))]
         {
-            percentile(values, Fraction::HALF, &mut pivot_fn::middle())
+            percentile_by(values, target, &mut pivot_fn::middle(), compare)
         }
     }
+
+    /// Convenience function for [`percentile`] with the 50% mark as the target and [`pivot_fn::rand`]
+    /// (if the `percentile-rand` feature is enabled, else [`pivot_fn::middle`]).
+    ///
+    /// See [`percentile_default_pivot_by`] for supplying a custom comparator function.
+    /// This is critical for types which does not implement [`Ord`] (e.g. f64).
+    pub fn median(values: &mut OwnedClusterList) -> MeanValue<f64> {
+        percentile_default_pivot(values, Fraction::HALF)
+    }
+
     struct ClusterMut<'a> {
         list: &'a mut [Cluster],
         len: usize,
@@ -649,7 +752,8 @@ pub mod cluster {
     fn quickselect<'a>(
         values: &'a mut ClusterMut<'a>,
         k: usize,
-        pivot_fn: &mut impl FnMut(&ClusterList) -> f64,
+        mut pivot_fn: impl FnMut(&ClusterList) -> f64,
+        mut compare: impl FnMut(f64, f64) -> cmp::Ordering,
     ) -> f64 {
         if values.len() == 1 {
             debug_assert!(k < values.list().len());
@@ -658,20 +762,24 @@ pub mod cluster {
 
         let pivot = pivot_fn(&values.list());
 
-        let (mut lows, mut highs_inclusive) = include(values, |v| v < pivot);
-        let (mut highs, pivots) = include(&mut highs_inclusive, |v| v > pivot);
+        let (mut lows, mut highs_inclusive) =
+            include(values, |v| compare(v, pivot) == cmp::Ordering::Less);
+        let (mut highs, pivots) = include(&mut highs_inclusive, |v| {
+            compare(v, pivot) == cmp::Ordering::Greater
+        });
 
         if k < lows.list().len() {
-            quickselect(&mut lows, k, pivot_fn)
+            quickselect(&mut lows, k, pivot_fn, compare)
         } else if k < lows.list().len() + pivots.list().len() {
             pivots[0].0
         } else if highs.is_empty() {
-            quickselect(&mut lows, k, pivot_fn)
+            quickselect(&mut lows, k, pivot_fn, compare)
         } else {
             quickselect(
                 &mut highs,
                 k - lows.list().len() - pivots.list().len(),
                 pivot_fn,
+                compare,
             )
         }
     }
