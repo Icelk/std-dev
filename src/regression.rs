@@ -1376,7 +1376,7 @@ pub mod ols {
             polynomial_arbitrary(predictors, outcomes, len, degree)
         }
         #[cfg(not(feature = "arbitrary-precision"))]
-        polynomial_simple(x, y, len, degree)
+        polynomial_simple(predictors, outcomes, len, degree)
     }
 }
 
