@@ -335,7 +335,7 @@ macro_rules! impl_std_dev {
         $(
         impl<'a> StandardDeviation<'a> for $t {
             fn one() -> Self {
-                1.1
+                1.0
             }
             fn sqrt(self) -> Self {
                 <$t>::sqrt(self)
