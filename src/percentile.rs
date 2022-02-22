@@ -11,7 +11,6 @@
 #[cfg(feature = "percentile-rand")]
 use rand::Rng;
 use std::borrow::Cow;
-use std::ops;
 
 // `TODO`: Add `_by` functions (e.g. `percentile_by`) to implement comparator functions without
 // wrappers.
@@ -72,13 +71,42 @@ where
     }
 }
 
-impl<T: num_traits::identities::One + ops::Add<Output = T> + ops::Div<Output = T>> PercentileResolve
-    for T
+#[cfg(feature = "generic-impls")]
+impl<T: num_traits::identities::One + std::ops::Add<Output = T> + std::ops::Div<Output = T>>
+    PercentileResolve for T
 {
     fn mean(a: Self, b: Self) -> Self {
         (a + b) / (T::one() + T::one())
     }
 }
+#[cfg(not(feature = "generic-impls"))]
+macro_rules! impl_resolve {
+    ($($t:ty:$two:expr, )+) => {
+        $(
+        impl PercentileResolve for $t {
+            fn mean(a: Self, b: Self) -> Self {
+                (a + b) / $two
+            }
+        }
+        )+
+    };
+}
+#[cfg(not(feature = "generic-impls"))]
+macro_rules! impl_resolve_integer {
+    ($($t:ty, )+) => {
+        impl_resolve!($($t:2, )+);
+    };
+}
+#[cfg(not(feature = "generic-impls"))]
+macro_rules! impl_resolve_float {
+    ($($t:ty, )+) => {
+        impl_resolve!($($t:2.0, )+);
+    };
+}
+#[cfg(not(feature = "generic-impls"))]
+impl_resolve_integer!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize,);
+#[cfg(not(feature = "generic-impls"))]
+impl_resolve_float!(f32, f64,);
 
 /// Trait to get the index of a sorted list. Implemented by [`Fraction`], [`KthSmallest`], and
 /// [`KthLargest`].

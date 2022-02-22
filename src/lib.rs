@@ -246,18 +246,107 @@ pub struct PercentilesOutput {
     pub higher_quadrille: Option<f64>,
 }
 
+/// Helper-trait for types used by [`mean`].
+///
+/// This is implemented generically when the feature `generic-impl` is enabled.
+pub trait Mean<'a, D>: std::iter::Sum<&'a Self> + ops::Div<Output = D>
+where
+    Self: 'a,
+{
+    fn from_usize(n: usize) -> Self;
+}
+#[cfg(feature = "generic-impls")]
+impl<'a, T: std::iter::Sum<&'a Self> + ops::Div + num_traits::FromPrimitive> Mean<'a, T::Output>
+    for T
+where
+    T: 'a,
+{
+    fn from_usize(n: usize) -> Self {
+        Self::from_usize(n).expect("Value can not be converted from usize. Check your type in the call to standard_deviation/mean.")
+    }
+}
+#[cfg(not(feature = "generic-impls"))]
+macro_rules! impl_mean {
+    ($($t:ty, )+) => {
+        $(
+        impl<'a> Mean<'a, <$t as ops::Div>::Output> for $t {
+            fn from_usize(n: usize) -> Self {
+                n as _
+            }
+        }
+        )+
+    };
+}
+#[cfg(not(feature = "generic-impls"))]
+impl_mean!(f32, f64, u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize,);
+
+/// Helper-trait for types used by [`standard_deviation`].
+///
+/// This is implemented generically when the feature `generic-impl` is enabled.
+pub trait StandardDeviation<'a>:
+    Copy
+    + Mean<'a, Self>
+    + std::iter::Sum<&'a Self>
+    + std::iter::Sum
+    + ops::Div<Output = Self>
+    + ops::Sub<Output = Self>
+    + ops::Mul<Output = Self>
+where
+    Self: 'a,
+{
+    fn one() -> Self;
+    fn sqrt(self) -> Self;
+}
+#[cfg(feature = "generic-impls")]
+impl<
+        'a,
+        T: Copy
+            + Mean<'a, Self>
+            + std::iter::Sum<&'a Self>
+            + std::iter::Sum
+            + ops::Div<Output = Self>
+            + ops::Sub<Output = Self>
+            + ops::Mul<Output = Self>
+            + num_traits::identities::One
+            + num_traits::real::Real,
+    > StandardDeviation<'a> for T
+where
+    T: 'a,
+{
+    fn one() -> Self {
+        Self::one()
+    }
+    fn sqrt(self) -> Self {
+        self.sqrt()
+    }
+}
+#[cfg(not(feature = "generic-impls"))]
+macro_rules! impl_std_dev {
+    ($($t:ty, )+) => {
+        $(
+        impl<'a> StandardDeviation<'a> for $t {
+            fn one() -> Self {
+                1.1
+            }
+            fn sqrt(self) -> Self {
+                <$t>::sqrt(self)
+            }
+        }
+        )+
+    };
+}
+#[cfg(not(feature = "generic-impls"))]
+impl_std_dev!(f32, f64,);
+
 /// Mean of clustered `values`.
 pub fn mean_cluster(values: &ClusterList) -> f64 {
     values.sum() / values.len() as f64
 }
 /// Mean of `values`.
-pub fn mean<'a, T: std::iter::Sum<&'a T> + ops::Div + num_traits::FromPrimitive>(
-    values: &'a [T],
-) -> <T as std::ops::Div>::Output {
-    values.iter().sum::<T>()
-        / T::from_usize(values.len())
-            .expect("Value can not be converted from usize. Check your type in the call to standard_deviation.")
+pub fn mean<'a, D, T: Mean<'a, D>>(values: &'a [T]) -> D {
+    values.iter().sum::<T>() / T::from_usize(values.len())
 }
+
 /// Get the standard deviation of `values`.
 /// The mean is also returned from this, because it's required to compute the standard deviation.
 ///
@@ -277,19 +366,7 @@ pub fn standard_deviation_cluster(values: &ClusterList) -> StandardDeviationOutp
 /// O(n)
 // `TODO`: Remove dependency of `num_traits`, create our own trait which implements the methods, then cfg
 // if not num_traits, implement for f64,f32. Else, derive from the current traits.
-pub fn standard_deviation<
-    'a,
-    T: std::iter::Sum<&'a T>
-        + std::iter::Sum
-        + ops::Div<Output = T>
-        + ops::Sub<Output = T>
-        + ops::Mul<Output = T>
-        + num_traits::identities::One
-        + num_traits::real::Real
-        + num_traits::FromPrimitive
-        + Copy
-        + 'a,
->(
+pub fn standard_deviation<'a, T: StandardDeviation<'a>>(
     values: &'a [T],
 ) -> StandardDeviationOutput<T> {
     let m = mean(values);
@@ -301,7 +378,7 @@ pub fn standard_deviation<
             diff * diff
         })
         .sum();
-    let variance: T = squared_deviations / (T::from_usize( values.len()).expect("Value can not be converted from usize. Check your type in the call to standard_deviation.") - T::one());
+    let variance: T = squared_deviations / (T::from_usize(values.len()) - T::one());
     let std_dev = variance.sqrt();
 
     StandardDeviationOutput {
