@@ -285,8 +285,6 @@ impl PartialOrd for Fraction {
         Some(self.cmp(other))
     }
 }
-// `TODO` implement Eq and Ord for `Fraction`
-// requires prime factoring (or just converting to floats...) (https://crates.io/crates/primal-sieve)
 
 /// Get the k-th smallest value.
 /// Implements [`OrderedListIndex`].

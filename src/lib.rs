@@ -364,8 +364,6 @@ pub fn standard_deviation_cluster(values: &ClusterList) -> StandardDeviationOutp
 /// The mean is also returned from this, because it's required to compute the standard deviation.
 ///
 /// O(n)
-// `TODO`: Remove dependency of `num_traits`, create our own trait which implements the methods, then cfg
-// if not num_traits, implement for f64,f32. Else, derive from the current traits.
 pub fn standard_deviation<'a, T: StandardDeviation<'a>>(
     values: &'a [T],
 ) -> StandardDeviationOutput<T> {

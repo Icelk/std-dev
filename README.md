@@ -14,6 +14,7 @@ We're ever expanding, but for now the following are implemented.
     -   standard deviation
     -   mean
 -   [Ordinary least square](https://en.wikipedia.org/wiki/Ordinary_least_squares) for linear and polynomial regression
+-   Naive (O(n²))[Theil-Sen estimator](https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator) for both linear and polynomial (O(n^(m)), where m is the degree + 1) regression
 -   Exponential/growth and power regression, with **correct handling of negatives** (most other applications silently ignores them)
 -   "best fit" method if you don't know which regression model to use
 -   (binary) A basic plotting feature to preview the equation in relation to the input data
@@ -28,13 +29,16 @@ This is minimalistic by design, as other programs may be used to produce/modify 
 
 # Cargo features
 
-When using this as a library, I recommend disabling all features (`std-dev = { version = "0.1", default-features = false }`)
+When using this as a library, I recommend disabling all features (except `base`) (`std-dev = { version = "0.1", default-features = false, features = ["base"] }`)
 and enabling those you need.
 
 - `bin` (default, binary feature): This enables the binary to compile.
 - `prettier` (default, binary feature): Makes the binary output prettier. Includes colours and prompts for interactive use.
 - `regression` (default, library and binary feature): Enables all regression estimators. This requires `nalgebra`, which provides linear algebra.
 - `arbitrary-precision` (default, library feature): Uses arbitrary precision algebra for >10 degree polynomial regression.
+- `percentile-rand` (default, base, library feature): Enables the recommended `pivot_fn` for percentile-related functions.
+- `simplify-fraction` (default, base, library feature): Fractions are simplified. Relaxes the requirements for fraction input and implements Eq & Ord for fractions.
+- `generic-impls` (default, base, library feature): Makes `mean`, `standard_deviation`, and percentile resolving generic over numbers. This enables you to use numerical types from other libraries without hassle.
 
 # Performance
 
