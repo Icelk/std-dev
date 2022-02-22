@@ -22,16 +22,19 @@ pub enum MeanValue<T> {
     Mean(T, T),
 }
 impl MeanValue<crate::F64OrdHash> {
+    #[inline]
     pub fn resolve(self) -> f64 {
         self.map(|v| v.0).resolve()
     }
 }
 impl<T: PercentileResolve> MeanValue<T> {
+    #[inline]
     pub fn resolve(self) -> T {
         PercentileResolve::compute(self)
     }
 }
 impl<T> MeanValue<T> {
+    #[inline]
     pub fn into_single(self) -> Option<T> {
         if let Self::Single(t) = self {
             Some(t)
@@ -39,6 +42,7 @@ impl<T> MeanValue<T> {
             None
         }
     }
+    #[inline]
     pub fn map<O>(self, mut f: impl FnMut(T) -> O) -> MeanValue<O> {
         match self {
             Self::Single(v) => MeanValue::Single(f(v)),
@@ -47,6 +51,7 @@ impl<T> MeanValue<T> {
     }
 }
 impl<T: Clone> MeanValue<&T> {
+    #[inline]
     pub fn clone_inner(&self) -> MeanValue<T> {
         match self {
             Self::Single(t) => MeanValue::Single((*t).clone()),
@@ -61,6 +66,7 @@ where
     Self: Sized,
 {
     fn mean(a: Self, b: Self) -> Self;
+    #[inline]
     fn compute(percentile: MeanValue<Self>) -> Self {
         match percentile {
             MeanValue::Single(me) => me,
@@ -73,6 +79,7 @@ where
 impl<T: num_traits::identities::One + std::ops::Add<Output = T> + std::ops::Div<Output = T>>
     PercentileResolve for T
 {
+    #[inline]
     fn mean(a: Self, b: Self) -> Self {
         (a + b) / (T::one() + T::one())
     }
@@ -82,6 +89,7 @@ macro_rules! impl_resolve {
     ($($t:ty:$two:expr, )+) => {
         $(
         impl PercentileResolve for $t {
+            #[inline]
             fn mean(a: Self, b: Self) -> Self {
                 (a + b) / $two
             }
@@ -161,6 +169,7 @@ impl Fraction {
     /// # Panics
     ///
     /// Panics if `numerator > denominator`.
+    #[inline]
     pub fn new(numerator: usize, denominator: usize) -> Self {
         assert!(numerator <= denominator);
         #[cfg(feature = "simplify-fraction")]
@@ -255,6 +264,7 @@ impl OrderedListIndex for Fraction {
 
 #[cfg(feature = "simplify-fraction")]
 impl PartialEq for Fraction {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         // we don't need to simplify, as [`Self::new`] always does it, there's no way to not get a
         // simplified `Fraction`.
@@ -265,6 +275,7 @@ impl PartialEq for Fraction {
 impl Eq for Fraction {}
 #[cfg(feature = "simplify-fraction")]
 impl Ord for Fraction {
+    #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         // we don't need to simplify, as [`Self::new`] always does it, there's no way to not get a
         // simplified `Fraction`.
@@ -279,6 +290,7 @@ impl Ord for Fraction {
 }
 #[cfg(feature = "simplify-fraction")]
 impl PartialOrd for Fraction {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
@@ -295,6 +307,7 @@ impl KthSmallest {
     }
 }
 impl OrderedListIndex for KthSmallest {
+    #[inline]
     fn index(&self, len: usize) -> MeanValue<usize> {
         assert!(self.k < len);
         MeanValue::Single(self.k)
@@ -311,11 +324,17 @@ impl KthLargest {
     }
 }
 impl OrderedListIndex for KthLargest {
+    #[inline]
     fn index(&self, len: usize) -> MeanValue<usize> {
         assert!(self.k < len);
         // `-1` because if len == 2 and k==0, we want 1, as that's the second index.
         MeanValue::Single(len - 1 - self.k)
     }
+}
+
+#[inline(always)]
+fn a_cmp_b<T: Ord>(a: &T, b: &T) -> cmp::Ordering {
+    a.cmp(b)
 }
 
 /// Percentile by sorting.
@@ -326,10 +345,12 @@ impl OrderedListIndex for KthLargest {
 ///
 /// This will be very quick for small sets.
 /// O(n) performance when `values.len() < 5`, else O(n log n).
+#[inline]
 pub fn naive_percentile<T: Ord>(values: &mut [T], target: impl OrderedListIndex) -> MeanValue<&T> {
-    naive_percentile_by(values, target, &mut |a, b| a.cmp(b))
+    naive_percentile_by(values, target, &mut a_cmp_b)
 }
 /// Same as [`naive_percentile`] but with a custom comparator function.
+#[inline]
 pub fn naive_percentile_by<'a, T>(
     values: &'a mut [T],
     target: impl OrderedListIndex,
@@ -345,14 +366,16 @@ pub fn naive_percentile_by<'a, T>(
 /// See [`percentile_by`] for support for a custom comparator function.
 ///
 /// `pivot_fn` must return a value from the supplied slice.
+#[inline]
 pub fn percentile<T: Clone + Ord>(
     values: &mut [T],
     target: impl OrderedListIndex,
     pivot_fn: &mut impl FnMut(&mut [T]) -> Cow<'_, T>,
 ) -> MeanValue<T> {
-    percentile_by(values, target, pivot_fn, &mut |a, b| a.cmp(b))
+    percentile_by(values, target, pivot_fn, &mut a_cmp_b)
 }
 /// Same as [`percentile`] but with a custom comparator function.
+#[inline]
 pub fn percentile_by<T: Clone>(
     values: &mut [T],
     target: impl OrderedListIndex,
@@ -365,6 +388,7 @@ pub fn percentile_by<T: Clone>(
 }
 /// Convenience function for [`percentile`] with [`pivot_fn::rand`].
 #[cfg(feature = "percentile-rand")]
+#[inline]
 pub fn percentile_rand<T: Ord + Clone>(
     values: &mut [T],
     target: impl OrderedListIndex,
@@ -374,13 +398,15 @@ pub fn percentile_rand<T: Ord + Clone>(
 /// Get the value at `target` in `values`.
 /// Uses the best method available ([`percentile_rand`] if feature `percentile-rand` is enabled,
 /// else [`pivot_fn::middle`])
+#[inline]
 pub fn percentile_default_pivot<T: Ord + Clone>(
     values: &mut [T],
     target: impl OrderedListIndex,
 ) -> MeanValue<T> {
-    percentile_default_pivot_by(values, target, &mut |a, b| a.cmp(b))
+    percentile_default_pivot_by(values, target, &mut a_cmp_b)
 }
 /// Same as [`percentile_default_pivot`] but with a custom comparator function.
+#[inline]
 pub fn percentile_default_pivot_by<T: Clone>(
     values: &mut [T],
     target: impl OrderedListIndex,
@@ -401,6 +427,7 @@ pub fn percentile_default_pivot_by<T: Clone>(
 ///
 /// See [`percentile_default_pivot_by`] for supplying a custom comparator function.
 /// This is critical for types which does not implement [`Ord`] (e.g. f64).
+#[inline]
 pub fn median<T: Ord + Clone>(values: &mut [T]) -> MeanValue<T> {
     percentile_default_pivot(values, Fraction::HALF)
 }
@@ -439,6 +466,7 @@ fn quickselect<T: Clone>(
 }
 /// Moves items in the slice and splits it so the first returned slice contains all elements where
 /// `predicate` is true. The second contains all other.
+#[inline]
 pub fn split_include<T>(
     slice: &mut [T],
     mut predicate: impl FnMut(&T) -> bool,
@@ -538,6 +566,7 @@ pub mod pivot_fn {
     // }
 
     #[cfg(feature = "percentile-rand")]
+    #[inline]
     pub fn rand<T: Clone, S: SliceSubset<T> + ?Sized>() -> impl FnMut(&mut S) -> Cow<'_, T> {
         let mut rng = rand::thread_rng();
         move |slice| {
@@ -547,10 +576,15 @@ pub mod pivot_fn {
             Cow::Borrowed(slice.get(idx).unwrap())
         }
     }
+    #[inline]
     pub fn middle<T: Clone, S: SliceSubset<T> + ?Sized>() -> impl FnMut(&mut S) -> Cow<'_, T> {
-        // UNWRAP: it's less than `slice.len`.
-        // We assume `!slice.is_empty()`.
-        move |slice| Cow::Borrowed(slice.get(slice.len() / 2).unwrap())
+        #[inline(always)]
+        fn inner<T: Clone, S: SliceSubset<T> + ?Sized>(slice: &mut S) -> Cow<'_, T> {
+            // UNWRAP: it's less than `slice.len`.
+            // We assume `!slice.is_empty()`.
+            Cow::Borrowed(slice.get(slice.len() / 2).unwrap())
+        }
+        inner
     }
     /// Slice the list using the median of medians method.
     /// It's not recommended to use this.
@@ -604,6 +638,7 @@ pub mod cluster {
     pub mod pivot_fn {
         use super::*;
         #[cfg(feature = "percentile-rand")]
+        #[inline]
         pub fn rand() -> impl FnMut(&ClusterList) -> f64 {
             let mut rng = rand::thread_rng();
             move |slice| {
@@ -613,10 +648,15 @@ pub mod cluster {
                 *slice.index(idx)
             }
         }
+        #[inline]
         pub fn middle() -> impl FnMut(&ClusterList) -> f64 {
-            // Panic (index call): it's less than `slice.len`.
-            // We assume `!slice.is_empty()`.
-            move |slice| *slice.index(slice.len() / 2)
+            #[inline(always)]
+            fn inner(slice: &ClusterList) -> f64 {
+                // Panic (index call): it's less than `slice.len`.
+                // We assume `!slice.is_empty()`.
+                *slice.index(slice.len() / 2)
+            }
+            inner
         }
     }
 
@@ -628,6 +668,7 @@ pub mod cluster {
     ///
     /// This will be very quick for small sets.
     /// O(n) performance when `values.len() < 5`, else O(n log n).
+    #[inline]
     pub fn naive_percentile(
         values: &mut OwnedClusterList,
         target: impl OrderedListIndex,
@@ -635,6 +676,7 @@ pub mod cluster {
         naive_percentile_by(values, target, &mut crate::F64OrdHash::f64_cmp)
     }
     /// Same as [`naive_percentile`] but with a custom comparator function.
+    #[inline]
     pub fn naive_percentile_by(
         values: &mut OwnedClusterList,
         target: impl OrderedListIndex,
@@ -651,16 +693,16 @@ pub mod cluster {
     /// See [`percentile_by`] for support for a custom comparator function.
     ///
     /// `pivot_fn` must return a value from the supplied slice.
+    #[inline]
     pub fn percentile(
         values: &mut OwnedClusterList,
         target: impl OrderedListIndex,
         pivot_fn: &mut impl FnMut(&ClusterList) -> f64,
     ) -> MeanValue<f64> {
-        percentile_by(values, target, pivot_fn, &mut |a, b| {
-            crate::F64OrdHash::f64_cmp(a, b)
-        })
+        percentile_by(values, target, pivot_fn, &mut crate::F64OrdHash::f64_cmp)
     }
     /// Same as [`percentile`] but with a custom comparator function.
+    #[inline]
     pub fn percentile_by(
         values: &mut OwnedClusterList,
         target: impl OrderedListIndex,
@@ -673,6 +715,7 @@ pub mod cluster {
     }
     /// Convenience function for [`percentile`] with [`pivot_fn::rand`].
     #[cfg(feature = "percentile-rand")]
+    #[inline]
     pub fn percentile_rand(
         values: &mut OwnedClusterList,
         target: impl OrderedListIndex,
@@ -682,6 +725,7 @@ pub mod cluster {
     /// Get the value at `target` in `values`.
     /// Uses the best method available ([`percentile_rand`] if feature `percentile-rand` is enabled,
     /// else [`pivot_fn::middle`])
+    #[inline]
     pub fn percentile_default_pivot(
         values: &mut OwnedClusterList,
         target: impl OrderedListIndex,
@@ -689,6 +733,7 @@ pub mod cluster {
         percentile_default_pivot_by(values, target, &mut crate::F64OrdHash::f64_cmp)
     }
     /// Same as [`percentile_default_pivot`] but with a custom comparator function.
+    #[inline]
     pub fn percentile_default_pivot_by(
         values: &mut OwnedClusterList,
         target: impl OrderedListIndex,
@@ -709,6 +754,7 @@ pub mod cluster {
     ///
     /// See [`percentile_default_pivot_by`] for supplying a custom comparator function.
     /// This is critical for types which does not implement [`Ord`] (e.g. f64).
+    #[inline]
     pub fn median(values: &mut OwnedClusterList) -> MeanValue<f64> {
         percentile_default_pivot(values, Fraction::HALF)
     }
@@ -719,16 +765,19 @@ pub mod cluster {
     }
     impl<'a> Deref for ClusterMut<'a> {
         type Target = [Cluster];
+        #[inline]
         fn deref(&self) -> &Self::Target {
             self.list
         }
     }
     impl<'a> DerefMut for ClusterMut<'a> {
+        #[inline]
         fn deref_mut(&mut self) -> &mut Self::Target {
             self.list
         }
     }
     impl<'a> From<&'a ClusterMut<'a>> for ClusterList<'a> {
+        #[inline]
         fn from(c: &'a ClusterMut<'a>) -> Self {
             ClusterList {
                 list: c.list,
@@ -737,6 +786,7 @@ pub mod cluster {
         }
     }
     impl<'a> From<&'a mut OwnedClusterList> for ClusterMut<'a> {
+        #[inline]
         fn from(l: &'a mut OwnedClusterList) -> Self {
             Self {
                 list: &mut l.list,
@@ -745,6 +795,7 @@ pub mod cluster {
         }
     }
     impl<'a> ClusterMut<'a> {
+        #[inline]
         fn list(&self) -> ClusterList {
             ClusterList::from(self)
         }
@@ -763,8 +814,8 @@ pub mod cluster {
         let pivot = pivot_fn(&values.list());
 
         let (mut lows, mut highs_inclusive) =
-            include(values, |v| compare(v, pivot) == cmp::Ordering::Less);
-        let (mut highs, pivots) = include(&mut highs_inclusive, |v| {
+            split_include(values, |v| compare(v, pivot) == cmp::Ordering::Less);
+        let (mut highs, pivots) = split_include(&mut highs_inclusive, |v| {
             compare(v, pivot) == cmp::Ordering::Greater
         });
 
@@ -783,7 +834,8 @@ pub mod cluster {
             )
         }
     }
-    fn include<'a>(
+    #[inline]
+    fn split_include<'a>(
         slice: &'a mut ClusterMut<'a>,
         mut predicate: impl FnMut(f64) -> bool,
     ) -> (ClusterMut<'a>, ClusterMut<'a>) {

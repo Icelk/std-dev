@@ -1280,6 +1280,7 @@ pub mod ols {
     /// Panics if either `x` or `y` don't have the length `len`.
     ///
     /// Also panics if `degree + 1 > len`.
+    #[inline(always)]
     pub fn polynomial(
         predictors: impl Iterator<Item = f64> + Clone,
         outcomes: impl Iterator<Item = f64>,
@@ -1313,7 +1314,7 @@ pub mod ols {
             let outcomes = nalgebra::DMatrix::from_iterator(len, 1, outcomes);
             let result = ((&t * &design)
                 .try_inverse()
-                .unwrap_or_else(|| (&t * &design).pseudo_inverse(0e-8).unwrap())
+                .unwrap_or_else(|| (&t * &design).pseudo_inverse(0e-6).unwrap())
                 * &t)
                 * outcomes;
 
@@ -1440,6 +1441,7 @@ pub mod theil_sen {
             me
         }
         /// Please hand the buffer back after each iteration. This greatly reduces allocations.
+        #[inline(always)]
         pub fn give_buffer(&mut self, buf: PermutationIterBuffer<T>) {
             debug_assert!(self.values.is_none());
             self.values = Some(buf.buf)
@@ -1483,19 +1485,12 @@ pub mod theil_sen {
         fn next(&mut self) -> Option<Self::Item> {
             for (num, iter) in self.iters.iter_mut().enumerate().rev() {
                 *iter += 1;
-                // optimization - if items left is less than what is required to fill the "tower"
-                // of succeeding indices, we return
-                if self.s1.len() - *iter <= self.pairs - 1 - num {
-                    continue;
-                }
-                // SAFETY: they are the same length, so getting from one guarantees we can get
-                // the same index from the other one.
-                let next = self
-                    .s1
-                    .get(*iter)
-                    .map(|v1| (*v1, *unsafe { self.s2.get_unchecked(*iter) }));
 
-                if let Some(next) = next {
+                if let Some(value) = self.s1.get(*iter) {
+                    // SAFETY: they are the same length, so getting from one guarantees we can get
+                    // the same index from the other one.
+                    let next = (*value, *unsafe { self.s2.get_unchecked(*iter) });
+
                     let values = &mut self.values_backup;
                     if let Some(v) = self.values.as_mut() {
                         // SAFETY: The length of `self.values`, `self.values_backup`, and
@@ -1512,7 +1507,14 @@ pub mod theil_sen {
                         };
                         return Some(PermutationIterBuffer { buf: values });
                     } else {
-                        // Not pushing unsafe as hard here, as this isn't as hot of a path.
+                        // optimization - if items left is less than what is required to fill the "tower"
+                        // of succeeding indices, we return
+                        if self.s1.len() - *iter <= self.pairs - 1 - num {
+                            continue;
+                        }
+
+                        // Not pushing unsafe/inline as hard here, as this isn't as hot of a path.
+
                         #[allow(clippy::needless_range_loop)] // clarity
                         for i in num + 1..self.pairs {
                             // start is 1+ the previous?
@@ -1552,6 +1554,7 @@ pub mod theil_sen {
     /// Lower-bound estimate (up to `pairs > 20`), within 100x (which is quite good for factorials).
     ///
     /// The original equation is `elements!/(pairs! (elements - pairs)!)`
+    #[inline]
     pub fn estimate_permutation_count(elements: usize, pairs: usize) -> f64 {
         let e = elements as f64;
         let p = pairs as f64;
@@ -1559,6 +1562,7 @@ pub mod theil_sen {
     }
     /// An exact count of permutations.
     /// Returns [`None`] if the arithmetic can't fit.
+    #[inline]
     pub fn permutation_count(elements: usize, pairs: usize) -> Option<usize> {
         fn factorial(num: u128) -> Option<u128> {
             match num {
@@ -1601,6 +1605,7 @@ pub mod theil_sen {
     /// Linear estimation using the Theil-Sen estimatior. This is robust against outliers.
     pub struct LinearTheilSen;
     impl LinearEstimator for LinearTheilSen {
+        #[inline]
         fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
             slow_linear(predictors, outcomes)
         }
@@ -1609,6 +1614,7 @@ pub mod theil_sen {
     /// used.
     pub struct PolynomialTheilSen;
     impl PolynomialEstimator for PolynomialTheilSen {
+        #[inline]
         fn model(
             &self,
             predictors: &[f64],
@@ -1668,29 +1674,32 @@ pub mod theil_sen {
             #[derive(Debug, Clone, Copy)]
             struct CmpFirst<T, V>(T, V);
             impl<T: PartialEq, V> PartialEq for CmpFirst<T, V> {
+                #[inline]
                 fn eq(&self, other: &Self) -> bool {
                     self.0.eq(&other.0)
                 }
             }
             impl<T: PartialEq + Eq, V> Eq for CmpFirst<T, V> {}
             impl<T: PartialOrd, V> PartialOrd for CmpFirst<T, V> {
+                #[inline]
                 fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
                     self.0.partial_cmp(&other.0)
                 }
             }
             impl<T: Ord, V> Ord for CmpFirst<T, V> {
+                #[inline]
                 fn cmp(&self, other: &Self) -> std::cmp::Ordering {
                     self.0.cmp(&other.0)
                 }
             }
 
-            let mut values: Vec<_> = predictors
-                .iter()
-                .zip(outcomes.iter())
-                .map(|(x, y)| CmpFirst(F64OrdHash(*y), *x))
-                .collect();
-            match percentile::median(&mut values).map(|v| (v.1, v.0 .0)) {
-                percentile::MeanValue::Single(v) => v,
+            let mut values: Vec<_> = predictors.iter().zip(outcomes.iter()).collect();
+            match percentile::percentile_default_pivot_by(
+                &mut values,
+                crate::Fraction::HALF,
+                &mut |a, b| F64OrdHash::f64_cmp(*a.1, *b.1),
+            ) {
+                percentile::MeanValue::Single(v) => (*v.0, *v.1),
                 percentile::MeanValue::Mean(v1, v2) => ((v1.0 + v2.0) / 2.0, (v1.1 + v2.1) / 2.0),
             }
         };
@@ -1809,19 +1818,35 @@ pub mod theil_sen {
             }
             _ => {
                 while let Some(buf) = iter.next() {
+                    #[inline(always)]
+                    fn tuple_first(t: &(f64, f64)) -> f64 {
+                        t.0
+                    }
+                    #[inline(always)]
+                    fn tuple_second(t: &(f64, f64)) -> f64 {
+                        t.1
+                    }
+
                     debug_assert_eq!(buf.len(), degree + 1);
 
-                    let predictors = buf.iter().map(|(x, _)| *x);
-                    let outcomes = buf.iter().map(|(_, y)| *y);
+                    let predictors = buf.iter().map(tuple_first);
+                    let outcomes = buf.iter().map(tuple_second);
 
                     let polynomial = ols::polynomial(predictors, outcomes, degree + 1, degree);
                     for (pos, coefficient) in polynomial.iter().enumerate() {
-                        coefficients[pos].push(*coefficient);
+                        // SAFETY: we pushed these vecs to `coefficients` above.
+                        // pos is less than the size of `coefficients`.
+                        unsafe { coefficients.get_unchecked_mut(pos).push(*coefficient) };
                     }
 
                     iter.give_buffer(buf);
                 }
             }
+        }
+
+        #[inline(always)]
+        fn f64_cmp(a: &f64, b: &f64) -> std::cmp::Ordering {
+            crate::F64OrdHash::f64_cmp(*a, *b)
         }
 
         let mut result = Vec::with_capacity(degree + 1);
@@ -1834,7 +1859,7 @@ pub mod theil_sen {
             let median = crate::percentile::percentile_default_pivot_by(
                 &mut coefficients,
                 crate::Fraction::HALF,
-                &mut |a, b| crate::F64OrdHash::f64_cmp(*a, *b),
+                &mut f64_cmp,
             )
             .resolve();
             result.push(median);

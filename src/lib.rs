@@ -68,13 +68,13 @@ impl DerefMut for OwnedClusterList {
 #[repr(transparent)]
 pub struct F64OrdHash(pub f64);
 impl F64OrdHash {
-    #[inline]
+    #[inline(always)]
     fn key(&self) -> u64 {
         self.0.to_bits()
     }
 
     /// Compares two `f64`s using our ordering.
-    #[inline]
+    #[inline(always)]
     pub fn f64_cmp(a: f64, b: f64) -> std::cmp::Ordering {
         Self(a).cmp(&Self(b))
     }
