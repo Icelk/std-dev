@@ -1506,12 +1506,13 @@ pub mod theil_sen {
                     // SAFETY: See above.
                     *unsafe { values.get_unchecked_mut(num) } = next;
                     if num + 1 == self.pairs {
-                        let values = self
-                            .values
-                            .take()
-                            .unwrap_or_else(|| self.values_backup.clone());
+                        let values = match self.values.take() {
+                            Some(x) => x,
+                            None => self.values_backup.clone(),
+                        };
                         return Some(PermutationIterBuffer { buf: values });
                     } else {
+                        // Not pushing unsafe as hard here, as this isn't as hot of a path.
                         #[allow(clippy::needless_range_loop)] // clarity
                         for i in num + 1..self.pairs {
                             // start is 1+ the previous?
@@ -1718,7 +1719,12 @@ pub mod theil_sen {
         // if degree == 0, get median.
         if degree == 0 {
             let mut outcomes = outcomes.to_vec();
-            let constant = crate::median(F64OrdHash::from_mut_f64_slice(&mut outcomes)).resolve();
+            let constant = crate::percentile::percentile_default_pivot_by(
+                &mut outcomes,
+                crate::Fraction::HALF,
+                &mut |a, b| crate::F64OrdHash::f64_cmp(*a, *b),
+            )
+            .resolve();
             return PolynomialCoefficients {
                 coefficients: vec![constant],
             };
@@ -1825,7 +1831,12 @@ pub mod theil_sen {
 
             // 5x boost in performance here when using `O(n)` median instead of sorting. (when
             // using args `-t -d5` with a detaset of 40 values).
-            let median = crate::median(F64OrdHash::from_mut_f64_slice(&mut coefficients)).resolve();
+            let median = crate::percentile::percentile_default_pivot_by(
+                &mut coefficients,
+                crate::Fraction::HALF,
+                &mut |a, b| crate::F64OrdHash::f64_cmp(*a, *b),
+            )
+            .resolve();
             result.push(median);
         }
         PolynomialCoefficients {

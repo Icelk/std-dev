@@ -68,27 +68,19 @@ impl DerefMut for OwnedClusterList {
 #[repr(transparent)]
 pub struct F64OrdHash(pub f64);
 impl F64OrdHash {
+    #[inline]
     fn key(&self) -> u64 {
         self.0.to_bits()
     }
-    pub fn to_mut_f64_slice(me: &mut [Self]) -> &mut [f64] {
-        // SAFETY: Since we have the same layout (repr(transparent)), this is fine.
-        unsafe { std::mem::transmute(me) }
-    }
-    pub fn from_mut_f64_slice(slice: &mut [f64]) -> &mut [Self] {
-        // SAFETY: Since we have the same layout (repr(transparent)), this is fine.
-        unsafe { std::mem::transmute(slice) }
-    }
-    pub fn to_f64_slice(me: &[Self]) -> &[f64] {
-        // SAFETY: Since we have the same layout (repr(transparent)), this is fine.
-        unsafe { std::mem::transmute(me) }
-    }
-    pub fn from_f64_slice(slice: &[f64]) -> &[Self] {
-        // SAFETY: Since we have the same layout (repr(transparent)), this is fine.
-        unsafe { std::mem::transmute(slice) }
+
+    /// Compares two `f64`s using our ordering.
+    #[inline]
+    pub fn f64_cmp(a: f64, b: f64) -> std::cmp::Ordering {
+        Self(a).cmp(&Self(b))
     }
 }
 impl hash::Hash for F64OrdHash {
+    #[inline]
     fn hash<H>(&self, state: &mut H)
     where
         H: hash::Hasher,
@@ -97,17 +89,20 @@ impl hash::Hash for F64OrdHash {
     }
 }
 impl PartialEq for F64OrdHash {
+    #[inline]
     fn eq(&self, other: &F64OrdHash) -> bool {
         self.key() == other.key()
     }
 }
 impl Eq for F64OrdHash {}
 impl PartialOrd for F64OrdHash {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 impl Ord for F64OrdHash {
+    #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0
             .partial_cmp(&other.0)
