@@ -296,12 +296,14 @@ where
 {
     fn one() -> Self;
     fn sqrt(self) -> Self;
+    fn max(self, other: Self) -> Self;
 }
 #[cfg(feature = "generic-impls")]
 impl<
         'a,
         T: Copy
             + Mean<'a, Self>
+            + PartialOrd
             + std::iter::Sum<&'a Self>
             + std::iter::Sum
             + ops::Div<Output = Self>
@@ -319,6 +321,13 @@ where
     fn sqrt(self) -> Self {
         self.sqrt()
     }
+    fn max(self, other: Self) -> Self {
+        if self < other {
+            other
+        } else {
+            self
+        }
+    }
 }
 #[cfg(not(feature = "generic-impls"))]
 macro_rules! impl_std_dev {
@@ -330,6 +339,13 @@ macro_rules! impl_std_dev {
             }
             fn sqrt(self) -> Self {
                 <$t>::sqrt(self)
+            }
+            fn max(self, other: Self) -> Self {
+                if self < other {
+                    other
+                } else {
+                    self
+                }
             }
         }
         )+
@@ -354,7 +370,7 @@ pub fn mean<'a, D, T: Mean<'a, D>>(values: &'a [T]) -> D {
 pub fn standard_deviation_cluster(values: &ClusterList) -> StandardDeviationOutput<f64> {
     let m = mean_cluster(values);
     let squared_deviations = values.sum_squared_diff(m);
-    let variance: f64 = squared_deviations / (values.len() - 1) as f64;
+    let variance: f64 = squared_deviations / (values.len() - 1).max(1) as f64;
     StandardDeviationOutput {
         standard_deviation: variance.sqrt(),
         mean: m,
@@ -376,7 +392,10 @@ pub fn standard_deviation<'a, T: StandardDeviation<'a>>(
             diff * diff
         })
         .sum();
-    let variance: T = squared_deviations / (T::from_usize(values.len()) - T::one());
+    let len_minus_one = T::from_usize(values.len()) - T::one();
+    // So we don't get an NaN if 1 value is supplied.
+    let denominator = len_minus_one.max(T::one());
+    let variance: T = squared_deviations / denominator;
     let std_dev = variance.sqrt();
 
     StandardDeviationOutput {
