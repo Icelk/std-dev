@@ -3,11 +3,12 @@
 //! - `O(n log n)` [`naive_percentile`] (simple to understand)
 //! - probabilistic `O(n)` [`percentile`] (recommended, fastest, and also quite simple to understand)
 //! - deterministic `O(n)` [`median_of_medians`] (harder to understand, probably slower than the
-//!     probabilistic version.)
+//!     probabilistic version. However guarantees linear time, so useful in critical applications.)
 //!
 //! You should probably use [`percentile_rand`].
 //!
 //! The linear time algoritms are implementations following [this blogpost](https://rcoh.me/posts/linear-time-median-finding/).
+#[cfg(feature = "percentile-rand")]
 use rand::Rng;
 use std::borrow::Cow;
 use std::ops;
@@ -218,20 +219,24 @@ pub fn percentile<T: Ord + Clone>(
         .map(|v| quickselect(values, v, pivot_fn).clone())
 }
 /// Convenience function for [`percentile`] with a random `pivot_fn`.
+#[cfg(feature = "percentile-rand")]
 pub fn percentile_rand<T: Ord + Clone>(
     values: &mut [T],
     target: impl OrderedListIndex,
 ) -> MeanValue<T> {
-    let mut rng = rand::thread_rng();
-    percentile(values, target, &mut |slice| {
-        let idx = rng.sample(rand::distributions::Uniform::new(0_usize, slice.len()));
-        Cow::Borrowed(&slice[idx])
-    })
+    percentile(values, target, &mut pivot_fn::rand())
 }
-/// Convenience function for [`percentile`] with the 50% mark as the target and a random
-/// `pivot_fn`.
+/// Convenience function for [`percentile`] with the 50% mark as the target and [`pivot_fn::rand`]
+/// (if the `percentile-rand` feature is enabled, else [`pivot_fn::middle`]).
 pub fn median<T: Ord + Clone>(values: &mut [T]) -> MeanValue<T> {
-    percentile_rand(values, Fraction::new(1, 2))
+    #[cfg(feature = "percentile-rand")]
+    {
+        percentile_rand(values, Fraction::HALF)
+    }
+    #[cfg(not(feature = "percentile-rand"))]
+    {
+        percentile(values, Fraction::HALF, &mut pivot_fn::middle())
+    }
 }
 /// Low level function used by this module.
 fn quickselect<'a, T: Ord + Clone>(
@@ -251,8 +256,8 @@ fn quickselect<'a, T: Ord + Clone>(
     let pivot = pivot_fn(values);
     let pivot = pivot.into_owned();
 
-    let (lows, highs_inclusive) = include(values, |v| *v < pivot);
-    let (highs, pivots) = include(highs_inclusive, |v| *v > pivot);
+    let (lows, highs_inclusive) = split_include(values, |v| *v < pivot);
+    let (highs, pivots) = split_include(highs_inclusive, |v| *v > pivot);
 
     if k < lows.len() {
         quickselect(lows, k, pivot_fn)
@@ -264,7 +269,10 @@ fn quickselect<'a, T: Ord + Clone>(
 }
 /// Moves items in the slice and splits it so the first returned slice contains all elements where
 /// `predicate` is true. The second contains all other.
-pub fn include<T>(slice: &mut [T], mut predicate: impl FnMut(&T) -> bool) -> (&mut [T], &mut [T]) {
+pub fn split_include<T>(
+    slice: &mut [T],
+    mut predicate: impl FnMut(&T) -> bool,
+) -> (&mut [T], &mut [T]) {
     let mut add_index = 0;
     let mut index = 0;
     let len = slice.len();
@@ -285,34 +293,113 @@ pub fn median_of_medians<T: Ord + Clone + PercentileResolve>(
     values: &mut [T],
     target: impl OrderedListIndex,
 ) -> MeanValue<T> {
-    percentile(values, target, &mut median_of_medians_pivot_fn)
+    percentile(values, target, &mut pivot_fn::median_of_medians())
 }
-/// Pick a good pivot within l, a list of numbers
-/// This algorithm runs in O(n) time.
-fn median_of_medians_pivot_fn<T: Ord + Clone + PercentileResolve>(l: &mut [T]) -> Cow<'_, T> {
-    let len = l.len();
-    assert!(len > 0);
 
-    // / 5 * 5 truncates to the lower 5-multiple.
-    // We only want full chunks.
-    let chunks = l[..(len / 5) * 5].chunks_mut(5);
+pub mod pivot_fn {
+    use super::*;
 
-    // Next, we sort each chunk. Each group is a fixed length, so each sort
-    // takes constant time. Since we have n/5 chunks, this operation
-    // is also O(n)
-    let sorted_chunks = chunks.map(|c| {
-        c.sort_unstable();
-        c
-    });
+    pub trait SliceSubset<T> {
+        fn len(&self) -> usize;
+        fn is_empty(&self) -> bool {
+            self.len() == 0
+        }
+        /// Returns [`None`] if `idx >= Self::len`.
+        fn get(&self, idx: usize) -> Option<&T>;
+    }
+    impl<T> SliceSubset<T> for [T] {
+        #[inline]
+        fn len(&self) -> usize {
+            <[T]>::len(self)
+        }
+        #[inline]
+        fn get(&self, idx: usize) -> Option<&T> {
+            <[T]>::get(self, idx)
+        }
+    }
+    impl<T> SliceSubset<T> for &[T] {
+        #[inline]
+        fn len(&self) -> usize {
+            <[T]>::len(self)
+        }
+        #[inline]
+        fn get(&self, idx: usize) -> Option<&T> {
+            <[T]>::get(self, idx)
+        }
+    }
+    impl<T> SliceSubset<T> for &mut [T] {
+        #[inline]
+        fn len(&self) -> usize {
+            <[T]>::len(self)
+        }
+        #[inline]
+        fn get(&self, idx: usize) -> Option<&T> {
+            <[T]>::get(self, idx)
+        }
+    }
+    //// See todo note under `clusters`.
+    //
+    // impl<'a> SliceSubset<f64> for ClusterList<'a> {
+    // #[inline]
+    // fn len(&self) -> usize {
+    // self.len()
+    // }
+    // #[inline]
+    // fn get(&self, idx: usize) -> Option<&f64> {
+    // if idx < self.len() {
+    // Some(self.index(idx))
+    // } else {
+    // None
+    // }
+    // }
+    // }
 
-    let medians = sorted_chunks.map(|chunk| chunk[2].clone());
-    let mut medians: Vec<_> = medians.collect();
-    let median_of_medians = percentile(
-        &mut medians,
-        Fraction::new(1, 2),
-        &mut median_of_medians_pivot_fn,
-    );
-    Cow::Owned(median_of_medians.resolve())
+    #[cfg(feature = "percentile-rand")]
+    pub fn rand<T: Clone, S: SliceSubset<T> + ?Sized>() -> impl FnMut(&mut S) -> Cow<'_, T> {
+        let mut rng = rand::thread_rng();
+        move |slice| {
+            let idx = rng.sample(rand::distributions::Uniform::new(0_usize, slice.len()));
+            // UNWRAP: it's less than `slice.len`.
+            // We assume `!slice.is_empty()`.
+            Cow::Borrowed(slice.get(idx).unwrap())
+        }
+    }
+    pub fn middle<T: Clone, S: SliceSubset<T> + ?Sized>() -> impl FnMut(&mut S) -> Cow<'_, T> {
+        // UNWRAP: it's less than `slice.len`.
+        // We assume `!slice.is_empty()`.
+        move |slice| Cow::Borrowed(slice.get(slice.len() / 2).unwrap())
+    }
+    /// Slice the list using the median of medians method.
+    /// It's not recommended to use this.
+    /// See the [module-level documentation](super) for more info.
+    ///
+    /// Picks a good pivot within l, a list of numbers.
+    /// This algorithm runs in O(n) time.
+    pub fn median_of_medians<T: Ord + Clone + PercentileResolve>(
+    ) -> impl FnMut(&mut [T]) -> Cow<'_, T> {
+        move |l| {
+            let len = l.len();
+            assert!(len > 0);
+
+            // / 5 * 5 truncates to the lower 5-multiple.
+            // We only want full chunks.
+            let chunks = l[..(len / 5) * 5].chunks_mut(5);
+
+            // Next, we sort each chunk. Each group is a fixed length, so each sort
+            // takes constant time. Since we have n/5 chunks, this operation
+            // is also O(n)
+            let sorted_chunks = chunks.map(|c| {
+                c.sort_unstable();
+                c
+            });
+
+            let medians = sorted_chunks.map(|chunk| chunk[2].clone());
+            let mut medians: Vec<_> = medians.collect();
+            let median_of_medians =
+                percentile(&mut medians, Fraction::new(1, 2), &mut median_of_medians());
+            Cow::Owned(median_of_medians.resolve())
+        }
+    }
 }
 
 /// Operations on [`crate::Cluster`]s.
@@ -323,6 +410,27 @@ pub mod cluster {
     use super::*;
     use crate::{Cluster, ClusterList, OwnedClusterList};
     use std::ops::{Deref, DerefMut};
+
+    // `TODO`: use `super::pivot_fn` instead. That doesn't however seem to work, due to idiotic
+    // lifetime requirements.
+    pub mod pivot_fn {
+        use super::*;
+        #[cfg(feature = "percentile-rand")]
+        pub fn rand() -> impl FnMut(&ClusterList) -> f64 {
+            let mut rng = rand::thread_rng();
+            move |slice| {
+                let idx = rng.sample(rand::distributions::Uniform::new(0_usize, slice.len()));
+                // Panic (index call): it's less than `slice.len`.
+                // We assume `!slice.is_empty()`.
+                *slice.index(idx)
+            }
+        }
+        pub fn middle() -> impl FnMut(&ClusterList) -> f64 {
+            // Panic (index call): it's less than `slice.len`.
+            // We assume `!slice.is_empty()`.
+            move |slice| *slice.index(slice.len() / 2)
+        }
+    }
 
     /// Percentile by sorting.
     ///
@@ -339,7 +447,7 @@ pub mod cluster {
             .sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
         let values = values.borrow();
         let len = values.len();
-        target.index(len).map(|idx| values.index(idx))
+        target.index(len).map(|idx| *values.index(idx))
     }
     /// quickselect algorithm
     ///
@@ -355,27 +463,25 @@ pub mod cluster {
             .index(values.borrow().len())
             .map(|idx| quickselect(&mut values.into(), idx, pivot_fn))
     }
-    /// Convenience function for [`percentile`] with a random `pivot_fn`.
+    /// Convenience function for [`percentile`] with [`pivot_fn::rand`].
+    #[cfg(feature = "percentile-rand")]
     pub fn percentile_rand(
         values: &mut OwnedClusterList,
         target: impl OrderedListIndex,
     ) -> MeanValue<f64> {
-        let mut rng = rand::thread_rng();
-        percentile(values, target, &mut |slice| {
-            let mut idx = rng.sample(rand::distributions::Uniform::new(0_usize, slice.len()));
-            for item in slice.list {
-                if idx < item.1 {
-                    return item.0;
-                }
-                idx -= item.1;
-            }
-            slice.list.last().unwrap().0
-        })
+        percentile(values, target, &mut pivot_fn::rand())
     }
-    /// Convenience function for [`percentile`] with the 50% mark as the target and a random
-    /// `pivot_fn`.
+    /// Convenience function for [`percentile`] with the 50% mark as the target and [`pivot_fn::rand`]
+    /// (if the `percentile-rand` feature is enabled, else [`pivot_fn::middle`]).
     pub fn median(values: &mut OwnedClusterList) -> MeanValue<f64> {
-        percentile_rand(values, Fraction::new(1, 2))
+        #[cfg(feature = "percentile-rand")]
+        {
+            percentile_rand(values, Fraction::HALF)
+        }
+        #[cfg(not(feature = "percentile-rand"))]
+        {
+            percentile(values, Fraction::HALF, &mut pivot_fn::middle())
+        }
     }
     struct ClusterMut<'a> {
         list: &'a mut [Cluster],

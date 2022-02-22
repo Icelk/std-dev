@@ -8,7 +8,9 @@ pub mod regression;
 
 pub mod percentile;
 
-pub use percentile::{median, percentile, percentile_rand, Fraction};
+#[cfg(feature = "percentile-rand")]
+pub use percentile::percentile_rand;
+pub use percentile::{median, percentile, Fraction};
 #[cfg(feature = "regression")]
 pub use regression::{best_fit_ols as regression_best_fit, Determination, Predictive};
 
@@ -193,16 +195,18 @@ impl<'a> ClusterList<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if [`Self::is_empty`];
-    pub fn index(&self, mut idx: usize) -> f64 {
+    /// Panics if [`Self::is_empty`] or if `idx >= self.len()`.
+    #[inline]
+    #[allow(clippy::should_implement_trait)] // `TODO`
+    pub fn index(&self, mut idx: usize) -> &f64 {
         for (v, c) in self.list {
             let c = *c;
             if idx < c {
-                return *v;
+                return v;
             }
             idx -= c;
         }
-        self.list.last().unwrap().0
+        &self.list.last().unwrap().0
     }
 
     /// Groups [`Cluster`]s with the same value together, by adding their count.
@@ -304,13 +308,26 @@ pub fn standard_deviation<
 
 /// Get a collection of percentiles from `values`.
 pub fn percentiles_cluster(values: &mut OwnedClusterList) -> PercentilesOutput {
+    fn percentile(
+        values: &mut OwnedClusterList,
+        target: impl percentile::OrderedListIndex,
+    ) -> percentile::MeanValue<f64> {
+        #[cfg(feature = "percentile-rand")]
+        {
+            cluster::percentile_rand(values, target)
+        }
+        #[cfg(not(feature = "percentile-rand"))]
+        {
+            cluster::percentile(values, target, &mut cluster::pivot_fn::middle())
+        }
+    }
     let lower = if values.borrow().len() >= 4 {
-        Some(cluster::percentile_rand(values, Fraction::new(1, 4)).resolve())
+        Some(percentile(values, Fraction::new(1, 4)).resolve())
     } else {
         None
     };
     let higher = if values.borrow().len() >= 4 {
-        Some(cluster::percentile_rand(values, Fraction::new(3, 4)).resolve())
+        Some(percentile(values, Fraction::new(3, 4)).resolve())
     } else {
         None
     };
