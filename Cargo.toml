@@ -65,3 +65,7 @@ bin = ["clap", "poloto"]
 
 # Prettier bin output
 pretty = ["bin", "atty", "colored"]
+
+[profile.release]
+lto = true
+opt-level = "s"
