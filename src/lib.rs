@@ -111,7 +111,11 @@ impl Ord for F64OrdHash {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0
             .partial_cmp(&other.0)
-            .unwrap_or(std::cmp::Ordering::Equal)
+            .unwrap_or_else(|| match (self.0.is_nan(), other.0.is_nan()) {
+                (true, true) | (false, false) => std::cmp::Ordering::Equal,
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+            })
     }
 }
 
