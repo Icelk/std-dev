@@ -66,6 +66,8 @@ bin = ["clap", "poloto"]
 # Prettier bin output
 pretty = ["bin", "atty", "colored"]
 
-[profile.release]
+# Build with `--profile production`
+[profile.production]
+inherits = "release"
 lto = true
 opt-level = "s"
