@@ -34,6 +34,9 @@ poloto = { version = "=5.18", optional = true, default-features = false }
 [features]
 default = ["bin", "pretty", "regression", "arbitrary-precision", "percentile-rand", "simplify-fraction", "generic-impls"]
 
+# Very commonly used features
+base = ["percentile-rand", "simplify-fraction", "generic-impls"]
+
 ##
 # Library features (also applies to binary)
 ##
