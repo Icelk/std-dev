@@ -1587,7 +1587,7 @@ pub mod theil_sen {
             .zip(s2.iter())
             .enumerate()
             .map(|(pos, (t11, t21))| {
-                // +1 because we don't want our selfs.
+                // +1 because we don't want our selves.
                 let left = &s1[pos + 1..];
                 let left_other = &s2[pos + 1..];
                 left.iter()
