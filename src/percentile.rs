@@ -196,8 +196,7 @@ impl Fraction {
         fn cluster_to_iter<T: Copy>(slice: &[(T, usize)]) -> impl Iterator<Item = T> + '_ {
             slice
                 .iter()
-                .map(|(num, count)| std::iter::repeat(*num).take(*count))
-                .flatten()
+                .flat_map(|(num, count)| std::iter::repeat(*num).take(*count))
         }
 
         // +1 for truncation and precision loss.

@@ -77,11 +77,7 @@ fn input(
                 break;
             }
             let mut current = Vec::with_capacity(2);
-            for segment in line
-                .split(',')
-                .map(|s| s.trim().split_whitespace())
-                .flatten()
-            {
+            for segment in line.split(',').flat_map(|s| s.trim().split_whitespace()) {
                 let f = parse(segment.trim());
                 if let Some(f) = f {
                     current.push(f)
@@ -114,8 +110,7 @@ fn input(
 
         let values: Vec<_> = s
             .split(',')
-            .map(|s| s.split_whitespace())
-            .flatten()
+            .flat_map(|s| s.split_whitespace())
             .filter_map(|s| {
                 Some(if let Some((v, count)) = s.split_once('x') {
                     let count = parse(count)?;

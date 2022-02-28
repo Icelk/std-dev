@@ -1591,7 +1591,7 @@ pub mod theil_sen {
         s1.iter()
             .zip(s2.iter())
             .enumerate()
-            .map(|(pos, (t11, t21))| {
+            .flat_map(|(pos, (t11, t21))| {
                 // +1 because we don't want our selves.
                 let left = &s1[pos + 1..];
                 let left_other = &s2[pos + 1..];
@@ -1599,7 +1599,6 @@ pub mod theil_sen {
                     .zip(left_other.iter())
                     .map(|(t12, t22)| ((*t11, *t21), (*t12, *t22)))
             })
-            .flatten()
     }
 
     /// Linear estimation using the Theil-Sen estimatior. This is robust against outliers.
