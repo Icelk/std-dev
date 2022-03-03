@@ -441,7 +441,8 @@ fn main() {
                     let data = format!(
                         "{}<style>{}{}</style>{}{}",
                         poloto::disp_const(|w| poloto::simple_theme::write_header(
-                            w, 1100.0, 500.0
+                            w,
+                            [1100.0, 500.0]
                         )),
                         poloto::simple_theme::STYLE_CONFIG_DARK_DEFAULT,
                         r##".poloto_legend_text[y="200"] { transform: translate(0, -60px); }"##,
