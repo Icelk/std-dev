@@ -2021,6 +2021,9 @@ pub mod theil_sen {
 /// When using [`PolynomialSpiralManhattanDistance`] it only supports degree 1&2.
 /// See [details](#details) for more info on this.
 ///
+/// The sampling technique means this might miss the right point to close in on. Therefore, I
+/// highly recommend using the [higher quality options](spiral::Options::new).
+///
 /// # Performance
 ///
 /// The functions are `O(fitness function)` where `O(fitness function)` is the time
@@ -2039,7 +2042,8 @@ pub mod theil_sen {
 /// with a [logarithmic spiral](https://en.wikipedia.org/wiki/Logarithmic_spiral)
 /// and sample points (we start at the angle θ e.g. `-12π` and go to a max value, e.g. `12π`)
 /// on an interval. When the range of the spiral has been sampled, we choose the best point and
-/// create a spiral there. Then repeat the steps.
+/// create a spiral there. Depending on how far out the new point, scale the whole spiral's size
+/// (by `distance.sqrt().sqrt()`). Then repeat.
 ///
 /// Parameters are chosen for an optimal spiral. The logarithmic spiral was chosen due to the
 /// distribution of unknown numbers (which the coefficients of the line are). There's generally
@@ -2160,7 +2164,7 @@ pub mod spiral {
         /// Default, with a good trade-off between speed and precision.
         pub fn new() -> Self {
             Self {
-                exponent_coefficient: 1.,
+                exponent_coefficient: 100.,
                 theta_coeffcient: 0.1,
                 num_lockon: 30,
                 samples_per_rotation: 30.,
@@ -2168,13 +2172,13 @@ pub mod spiral {
                 turns: 16.,
             }
         }
-        /// About 30x faster than the default config.
+        /// About 10x faster than [`Self::new`].
         pub fn fast() -> Self {
             Self {
-                exponent_coefficient: 1.,
+                exponent_coefficient: 50.,
                 theta_coeffcient: 0.2,
-                num_lockon: 10,
-                samples_per_rotation: 12.,
+                num_lockon: 15,
+                samples_per_rotation: 24.,
                 range: (-12. * PI)..(12. * PI),
                 turns: 16.,
             }
@@ -2194,7 +2198,7 @@ pub mod spiral {
         options: Options,
     ) -> LinearCoefficients {
         let Options {
-            exponent_coefficient,
+            mut exponent_coefficient,
             theta_coeffcient,
             num_lockon,
             samples_per_rotation,
@@ -2202,7 +2206,7 @@ pub mod spiral {
             turns: _,
         } = options;
         let advance = PI * 2. / samples_per_rotation;
-        let mut best = (f64::MIN, LinearCoefficients { k: 0., m: 0. });
+        let mut best = ((f64::MIN, 1.), LinearCoefficients { k: 0., m: 0. });
         let mut last_best = f64::MIN;
 
         for i in 0..num_lockon {
@@ -2218,9 +2222,12 @@ pub mod spiral {
                     k: slope,
                     m: intersect,
                 });
-                if fitness > best.0 {
+                if fitness > best.0 .0 {
                     best = (
-                        fitness,
+                        (
+                            fitness,
+                            exponent_coefficient * E.powf(theta_coeffcient * theta),
+                        ),
                         LinearCoefficients {
                             k: slope,
                             m: intersect,
@@ -2230,10 +2237,11 @@ pub mod spiral {
 
                 theta += advance;
             }
-            if last_best == best.0 && i != 0 {
+            if last_best == best.0 .0 && i != 0 {
                 return best.1;
             }
-            last_best = best.0;
+            last_best = best.0 .0;
+            exponent_coefficient *= best.0 .1.sqrt().sqrt();
         }
         best.1
     }
@@ -2247,7 +2255,7 @@ pub mod spiral {
         options: Options,
     ) -> PolynomialCoefficients {
         let Options {
-            exponent_coefficient,
+            mut exponent_coefficient,
             theta_coeffcient,
             num_lockon,
             samples_per_rotation,
@@ -2259,7 +2267,7 @@ pub mod spiral {
         let polynomial_identity = PolynomialCoefficients {
             coefficients: vec![0., 0., 0.],
         };
-        let mut best = (f64::MIN, polynomial_identity.clone());
+        let mut best = ((f64::MIN, 1.), polynomial_identity.clone());
         let mut last_best = f64::MIN;
 
         let mut current_coefficients = polynomial_identity;
@@ -2277,16 +2285,17 @@ pub mod spiral {
                 current_coefficients.slice_mut()[2] = c;
 
                 let fitness = fitness_function(&current_coefficients);
-                if fitness > best.0 {
-                    best = (fitness, current_coefficients.clone());
+                if fitness > best.0 .0 {
+                    best = ((fitness, r), current_coefficients.clone());
                 }
 
                 theta += advance;
             }
-            if last_best == best.0 && i != 0 {
+            if last_best == best.0 .0 && i != 0 {
                 return best.1;
             }
-            last_best = best.0;
+            last_best = best.0 .0;
+            exponent_coefficient *= best.0 .1.sqrt().sqrt();
         }
         best.1
     }
