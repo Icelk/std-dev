@@ -217,7 +217,12 @@ fn main() {
             .arg(Arg::new("theil_sen")
                 .long("theil-sen")
                 .short('t')
-                .help("Use the Theil-Sen estimator instead of OLS for linear and polynomial (slow). Not applied when -l or -d aren't supplied.")
+                .help("Use the Theil-Sen estimator instead of OLS for linear and polynomial (slow).")
+            )
+            .arg(Arg::new("spiral")
+                .long("spiral")
+                .short('s')
+                .help("Use the spiral estimator instead of OLS for linear and polynomial (degree 1&2, linear time complexity).")
             )
             .arg(Arg::new("plot")
                 .long("plot")
@@ -311,58 +316,63 @@ fn main() {
                 let mut x: Vec<f64> = x_iter.clone().collect();
                 let mut y: Vec<f64> = y_iter.clone().collect();
 
+                let linear_estimator = {
+                    if config.is_present("theil_sen") {
+                        std_dev::regression::LinearTheilSen.boxed()
+                    } else if config.is_present("spiral") {
+                        std_dev::regression::LinearSpiralManhattanDistance.boxed()
+                    } else {
+                        std_dev::regression::LinearOls.boxed()
+                    }
+                };
+
                 let now = Instant::now();
 
-                let model: DynModel =
-                    if config.is_present("power") || config.is_present("exponential") {
-                        if config.is_present("power") {
-                            let coefficients = std_dev::regression::power_ols(&mut x, &mut y);
-                            DynModel::new(coefficients)
-                        } else {
-                            assert!(config.is_present("exponential"));
+                let model: DynModel = if config.is_present("power")
+                    || config.is_present("exponential")
+                {
+                    if config.is_present("power") {
+                        let coefficients =
+                            std_dev::regression::power(&mut x, &mut y, &&*linear_estimator);
+                        DynModel::new(coefficients)
+                    } else {
+                        assert!(config.is_present("exponential"));
 
-                            let coefficients = std_dev::regression::exponential_ols(&mut x, &mut y);
-                            DynModel::new(coefficients)
+                        let coefficients =
+                            std_dev::regression::exponential(&mut x, &mut y, &&*linear_estimator);
+                        DynModel::new(coefficients)
+                    }
+                } else if config.is_present("linear") || config.is_present("degree") {
+                    let degree = {
+                        if let Ok(degree) = config.value_of_t("degree") {
+                            degree
+                        } else {
+                            1
                         }
-                    } else if config.is_present("linear") || config.is_present("degree") {
-                        let degree = {
-                            if let Ok(degree) = config.value_of_t("degree") {
-                                degree
+                    };
+                    if degree + 1 > len {
+                        eprintln!("Degree of polynomial is too large; add more datapoints.");
+                        continue 'main;
+                    }
+
+                    if degree == 1 {
+                        linear_estimator.model(&x, &y).boxed()
+                    } else {
+                        let estimator = {
+                            if config.is_present("theil_sen") {
+                                std_dev::regression::PolynomialTheilSen.boxed()
+                            } else if config.is_present("spiral") {
+                                std_dev::regression::PolynomialSpiralManhattanDistance.boxed()
                             } else {
-                                1
+                                std_dev::regression::PolynomialOls.boxed()
                             }
                         };
-                        if degree + 1 > len {
-                            eprintln!("Degree of polynomial is too large; add more datapoints.");
-                            continue 'main;
-                        }
 
-                        if degree == 1 {
-                            let estimator = {
-                                if config.is_present("theil_sen") {
-                                    std_dev::regression::LinearTheilSen.boxed()
-                                } else {
-                                    std_dev::regression::LinearOls.boxed()
-                                }
-                            };
-
-                            estimator.model(&x, &y).boxed()
-                        } else {
-                            let estimator = {
-                                if config.is_present("theil_sen") {
-                                    std_dev::regression::PolynomialTheilSen.boxed()
-                                } else {
-                                    std_dev::regression::PolynomialOls.boxed()
-                                }
-                            };
-
-                            estimator.model(&x, &y, degree).boxed()
-                        }
-                    } else {
-                        let mut predictors: Vec<f64> = x_iter.clone().collect();
-                        let mut outcomes: Vec<f64> = y_iter.clone().collect();
-                        std_dev::regression::best_fit_ols(&mut predictors, &mut outcomes)
-                    };
+                        estimator.model(&x, &y, degree).boxed()
+                    }
+                } else {
+                    std_dev::regression::best_fit(&x, &y, &&*linear_estimator)
+                };
 
                 let p = matches
                     .value_of("precision")
