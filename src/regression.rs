@@ -2234,10 +2234,7 @@ pub mod spiral {
                 });
                 if fitness > best.0 .0 {
                     best = (
-                        (
-                            fitness,
-                            exponent_coefficient * E.powf(theta_coeffcient * theta),
-                        ),
+                        (fitness, E.powf(theta_coefficient * theta)),
                         LinearCoefficients {
                             k: slope,
                             m: intersect,
@@ -2251,7 +2248,15 @@ pub mod spiral {
                 return best.1;
             }
             last_best = best.0 .0;
-            exponent_coefficient *= best.0 .1.sqrt().sqrt();
+            // don't go full out, "ease" this into several approaching steps with .sqrt to avoid
+            // overcorrection.
+            exponent_coefficient *= best.0 .1.sqrt();
+
+            // uncomment line below to see how the coefficient changes and the current best.
+            // reveals how it shrinks the spiral, and sometimes enlarges it to later zoom in (if
+            // enough iterations are allowed)
+            //
+            // println!("Iteration complete. exponent_coefficient: {exponent_coefficient} best: {best:?}");
         }
         best.1
     }
@@ -2296,7 +2301,10 @@ pub mod spiral {
 
                 let fitness = fitness_function(&current_coefficients);
                 if fitness > best.0 .0 {
-                    best = ((fitness, r), current_coefficients.clone());
+                    best = (
+                        (fitness, r / exponent_coefficient),
+                        current_coefficients.clone(),
+                    );
                 }
 
                 theta += advance;
@@ -2305,7 +2313,7 @@ pub mod spiral {
                 return best.1;
             }
             last_best = best.0 .0;
-            exponent_coefficient *= best.0 .1.sqrt().sqrt();
+            exponent_coefficient *= best.0 .1.sqrt();
         }
         best.1
     }
