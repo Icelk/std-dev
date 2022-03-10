@@ -2147,10 +2147,10 @@ pub mod spiral {
     ///
     /// Use a graphing tool (e.g. Desmos) and plot `r=ae^(kθ)`.
     /// a is [`Self::exponent_coefficient`].
-    /// k is [`Self::theta_coefficient`].
+    /// k is [`Self::angle_coefficient`].
     ///
     /// To keep the same "size" of the spiral, you have to multiply both ends of [`Self::range`]
-    /// with the factor of [`Self::theta_coefficient`].
+    /// with the factor of [`Self::angle_coefficient`].
     ///
     /// # Performance
     ///
@@ -2161,13 +2161,13 @@ pub mod spiral {
     /// The following options affect the performance as follows (roughly, no coefficients)
     /// `O(num_lockon * samples_per_rotation * range.length)`.
     ///
-    /// Keep in mind you should probably not lower [`Self::theta_coefficient`] bellow `0.15`
+    /// Keep in mind you should probably not lower [`Self::angle_coefficient`] bellow `0.15`
     /// if you don't increase the [`Self::range`].
     #[must_use]
     #[derive(Debug, Clone, PartialEq)]
     pub struct Options {
         pub exponent_coefficient: f64,
-        pub theta_coefficient: f64,
+        pub angle_coefficient: f64,
         pub num_lockon: usize,
         pub samples_per_rotation: f64,
         pub range: Range<f64>,
@@ -2181,7 +2181,7 @@ pub mod spiral {
         pub fn new() -> Self {
             Self {
                 exponent_coefficient: 10.,
-                theta_coefficient: 0.07,
+                angle_coefficient: 0.07,
                 num_lockon: 16,
                 samples_per_rotation: 47.,
                 range: (-6. * TAU)..(6. * TAU),
@@ -2192,7 +2192,7 @@ pub mod spiral {
         pub fn fast() -> Self {
             Self {
                 exponent_coefficient: 10.,
-                theta_coefficient: 0.13,
+                angle_coefficient: 0.13,
                 num_lockon: 8,
                 samples_per_rotation: 37.,
                 range: (-4. * TAU)..(4. * TAU),
@@ -2206,7 +2206,7 @@ pub mod spiral {
         }
     }
 
-    /// Samples points in phase space of the lines on a logarithmic spiral.
+    /// Samples points on a logarithmic spiral in the phase space of all possible straight lines.
     ///
     /// See [`Options`].
     pub fn linear(
@@ -2215,7 +2215,7 @@ pub mod spiral {
     ) -> LinearCoefficients {
         let Options {
             mut exponent_coefficient,
-            theta_coefficient,
+            angle_coefficient,
             num_lockon,
             samples_per_rotation,
             range,
@@ -2229,9 +2229,9 @@ pub mod spiral {
             let mut theta = range.start;
             while theta < range.end {
                 let intersect =
-                    exponent_coefficient * E.powf(theta_coefficient * theta) * theta.cos()
+                    exponent_coefficient * E.powf(angle_coefficient * theta) * theta.cos()
                         + best.1.m;
-                let slope = exponent_coefficient * E.powf(theta_coefficient * theta) * theta.sin()
+                let slope = exponent_coefficient * E.powf(angle_coefficient * theta) * theta.sin()
                     + best.1.k;
 
                 let fitness = fitness_function(LinearCoefficients {
@@ -2240,7 +2240,7 @@ pub mod spiral {
                 });
                 if fitness > best.0 .0 {
                     best = (
-                        (fitness, E.powf(theta_coefficient * theta)),
+                        (fitness, E.powf(angle_coefficient * theta)),
                         LinearCoefficients {
                             k: slope,
                             m: intersect,
@@ -2266,9 +2266,9 @@ pub mod spiral {
         }
         best.1
     }
-    /// Samples points in phase space of the lines on a spherical spiral. As θ increases, the
-    /// imaginary sphere's size is increased. This gives a good distribution of sample points in 3d
-    /// space.
+    /// Samples points on a spherical spiral in the phase space of all second degree polynomials.
+    /// As θ (the angle) increases, the imaginary sphere's size is increased.
+    /// This gives a good distribution of sample points in 3d space.
     ///
     /// See [`Options`].
     pub fn second_degree_polynomial(
@@ -2277,7 +2277,7 @@ pub mod spiral {
     ) -> PolynomialCoefficients {
         let Options {
             mut exponent_coefficient,
-            theta_coefficient,
+            angle_coefficient,
             num_lockon,
             samples_per_rotation,
             range,
@@ -2296,7 +2296,7 @@ pub mod spiral {
         for i in 0..num_lockon {
             let mut theta = range.start;
             while theta < range.end {
-                let r = E.powf(theta * theta_coefficient) * exponent_coefficient;
+                let r = E.powf(theta * angle_coefficient) * exponent_coefficient;
                 let a = r * theta.sin() * (turns * theta).cos() + best.1[0];
                 let b = r * theta.sin() * (turns * theta).sin() + best.1[1];
                 let c = r * theta.cos() + best.1[2];
