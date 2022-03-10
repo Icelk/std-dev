@@ -1260,6 +1260,7 @@ pub mod arbitrary_linear_algebra {
 pub mod ols {
     use super::*;
 
+    /// `O(n)`
     pub struct LinearOls;
     impl LinearEstimator for LinearOls {
         fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
@@ -1275,6 +1276,7 @@ pub mod ols {
             }
         }
     }
+    /// `O(n*degree)`, which when using a set `degree` becomes `O(n)`
     pub struct PolynomialOls;
     impl PolynomialEstimator for PolynomialOls {
         fn model(
@@ -1620,6 +1622,7 @@ pub mod theil_sen {
     }
 
     /// Linear estimation using the Theil-Sen estimatior. This is robust against outliers.
+    /// `O(n²)`
     pub struct LinearTheilSen;
     impl LinearEstimator for LinearTheilSen {
         #[inline]
@@ -1629,6 +1632,7 @@ pub mod theil_sen {
     }
     /// Polynomial estimation using the Theil-Sen estimatior. Very slow and should probably not be
     /// used.
+    /// `O(n^degree)`
     pub struct PolynomialTheilSen;
     impl PolynomialEstimator for PolynomialTheilSen {
         #[inline]
@@ -2000,14 +2004,39 @@ pub mod theil_sen {
 ///
 /// > This is a brainchild of this library's lead developer [Icelk](mailto:Icelk<main@icelk.dev>).
 ///
+/// # Advantages
+///
+/// You supply a `fitness_function` to all functions which tells the algorithm which lines are
+/// good. The magnitude is irrelevant, only order is considered. The algorithm tries to *minimize*
+/// the returned value. **This allows you to choose what the desired properties of resulting
+/// line/polynomial, without checking all possible values.**
+///
+/// # Caveats
+///
+/// When using [`PolynomialSpiralManhattanDistance`] it only supports degree 1&2.
+/// See [details](#details) for more info on this.
+///
+/// # Performance
+///
+/// The functions are `O(fitness function)` where `O(fitness function)` is the time
+/// complexity of your `fitness_function`. That's often `O(n)` as you'd probably in some way
+/// sum up the points relative to the model.
+///
+/// This puts the algorithm similar to [`ols`], but with much worse (100x) performance.
+/// This may be justified by the [advantages](#advantages).
+/// It scales much better than [`theil_sen`] and is more robust, but when the count of points is
+/// small, `theil_sen` is faster.
+///
+/// # Details
+///
 /// The idea is to make a [phase space](https://en.wikipedia.org/wiki/Phase_space)
 /// of the parameters to a line (`y=(slope)*x + (y-intersect)`). We then traverse the phase space
 /// with a [logarithmic spiral](https://en.wikipedia.org/wiki/Logarithmic_spiral)
-/// and sample points (we start at e.g. `-12π` and at most go to `12π`)
+/// and sample points (we start at the angle θ e.g. `-12π` and go to a max value, e.g. `12π`)
 /// on an interval. When the range of the spiral has been sampled, we choose the best point and
 /// create a spiral there. Then repeat the steps.
 ///
-/// Parameters are chosen for an optimal spiral. The logarithmic spiral was choosen due to the
+/// Parameters are chosen for an optimal spiral. The logarithmic spiral was chosen due to the
 /// distribution of unknown numbers (which the coefficients of the line are). There's generally
 /// more numbers in the range 0..100 than in 100..200. Therefore, we search more numbers in 0..100.
 ///
@@ -2016,7 +2045,8 @@ pub mod theil_sen {
 /// where the radius grows with the angle of the spiral, calculated by `e^(θk)` where `k` is a
 /// parameter, similar to how a logarithmic spiral is created.
 ///
-/// > Can we get a spiral on a hypersphere? Or do we just need a even distribution?
+/// > On implementing third degree polynomials,
+/// > can we get a spiral on a hypersphere? Or do we just need a even distribution?
 ///
 /// See [`spiral::Options`] for more info on the parameters.
 pub mod spiral {
@@ -2026,6 +2056,8 @@ pub mod spiral {
 
     /// Like [`Determination::determination_slice`] but faster and more robust to outliers - values
     /// aren't squared, which increases the magnitude of outliers.
+    ///
+    /// `O(n)`
     pub fn manhattan_distance(
         model: &impl Predictive,
         predictors: &[f64],
@@ -2042,6 +2074,7 @@ pub mod spiral {
 
     /// [`LinearEstimator`] for the spiral estimator using the fast [`manhattan_distance`] fitness
     /// function.
+    /// `O(n)`
     pub struct LinearSpiralManhattanDistance;
     impl LinearEstimator for LinearSpiralManhattanDistance {
         fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
@@ -2053,6 +2086,7 @@ pub mod spiral {
     }
     /// [`PolynomialEstimator`] for the spiral estimator using the fast [`manhattan_distance`] fitness
     /// function.
+    /// `O(n)`
     ///
     /// **IMPORTANT**: only supports degrees of 1&2.
     pub struct PolynomialSpiralManhattanDistance;
