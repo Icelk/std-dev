@@ -2026,7 +2026,11 @@ pub mod spiral {
 
     /// Like [`Determination::determination_slice`] but faster and more robust to outliers - values
     /// aren't squared, which increases the magnitude of outliers.
-    pub fn manhattan_distance(model: &impl Predictive, predictors: &[f64], outcomes: &[f64]) -> f64 {
+    pub fn manhattan_distance(
+        model: &impl Predictive,
+        predictors: &[f64],
+        outcomes: &[f64],
+    ) -> f64 {
         let mut error = 0.;
         for (predictor, outcome) in predictors.iter().copied().zip(outcomes.iter().copied()) {
             let predicted = model.predict_outcome(predictor);
