@@ -82,6 +82,11 @@ pub trait Predictive {
         DynModel::new(self)
     }
 }
+impl<T: Predictive + ?Sized> Predictive for &T {
+    fn predict_outcome(&self, predictor: f64) -> f64 {
+        (&**self).predict_outcome(predictor)
+    }
+}
 /// Helper trait to make the [R²](Determination::determination) method take a generic iterator.
 ///
 /// This enables [`Predictive`] to be `dyn`.
@@ -2075,13 +2080,22 @@ pub mod spiral {
     /// [`LinearEstimator`] for the spiral estimator using the fast [`manhattan_distance`] fitness
     /// function.
     /// `O(n)`
-    pub struct LinearSpiralManhattanDistance;
+    pub struct LinearSpiralManhattanDistance(pub Options);
     impl LinearEstimator for LinearSpiralManhattanDistance {
         fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
             linear(
                 |model| manhattan_distance(&model, predictors, outcomes),
-                Default::default(),
+                self.0.clone(),
             )
+        }
+    }
+    /// [`LinearEstimator`] for the spiral estimator using a fitness function and [`Options`]
+    /// provided by you.
+    /// `O(fitness function)`
+    pub struct LinearSpiral<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64>(pub F, pub Options);
+    impl<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64> LinearEstimator for LinearSpiral<F> {
+        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+            linear(|model| self.0(&model, predictors, outcomes), self.1.clone())
         }
     }
     /// [`PolynomialEstimator`] for the spiral estimator using the fast [`manhattan_distance`] fitness
@@ -2089,7 +2103,7 @@ pub mod spiral {
     /// `O(n)`
     ///
     /// **IMPORTANT**: only supports degrees of 1&2.
-    pub struct PolynomialSpiralManhattanDistance;
+    pub struct PolynomialSpiralManhattanDistance(pub Options);
     impl PolynomialEstimator for PolynomialSpiralManhattanDistance {
         fn model(
             &self,
@@ -2100,12 +2114,12 @@ pub mod spiral {
             match degree {
                 1 => linear(
                     |model| manhattan_distance(&model, predictors, outcomes),
-                    Default::default(),
+                    self.0.clone(),
                 )
                 .into(),
                 2 => polynomial(
                     |model| manhattan_distance(model, predictors, outcomes),
-                    Default::default(),
+                    self.0.clone(),
                 ),
                 _ => panic!("unsupported degree for polynomial spiral. Supports 1,2."),
             }
@@ -2129,6 +2143,8 @@ pub mod spiral {
     ///
     /// Keep in mind you should not lower [`Self::theta_coeffcient`] bellow `0.15` if you don't increase
     /// the [`Self::range`].
+    #[must_use]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct Options {
         pub exponent_coefficient: f64,
         pub theta_coeffcient: f64,
@@ -2141,17 +2157,18 @@ pub mod spiral {
         pub turns: f64,
     }
     impl Options {
+        /// Default, with a good trade-off between speed and precision.
         pub fn new() -> Self {
             Self {
                 exponent_coefficient: 1.,
-                theta_coeffcient: 0.2,
-                num_lockon: 40,
+                theta_coeffcient: 0.1,
+                num_lockon: 30,
                 samples_per_rotation: 30.,
-                range: (-12. * PI)..(12. * PI),
+                range: (-24. * PI)..(24. * PI),
                 turns: 16.,
             }
         }
-        /// About 10x faster than the default config.
+        /// About 30x faster than the default config.
         pub fn fast() -> Self {
             Self {
                 exponent_coefficient: 1.,

@@ -224,6 +224,15 @@ fn main() {
                 .short('s')
                 .help("Use the spiral estimator instead of OLS for linear and polynomial (degree 1&2, linear time complexity).")
             )
+            .arg(Arg::new("spiral_level")
+                .long("spiral-level")
+                .help("Speed preset of spiral estimator. Lower are faster. Currently, not all presets are implemented. These may change at any time.")
+                .requires("spiral")
+                .takes_value(true)
+                .possible_value("3")
+                .possible_value("6")
+                .default_value("6")
+            )
             .arg(Arg::new("plot")
                 .long("plot")
                 .help("Plots the regression and input variables in a SVG.")
@@ -316,11 +325,26 @@ fn main() {
                 let mut x: Vec<f64> = x_iter.clone().collect();
                 let mut y: Vec<f64> = y_iter.clone().collect();
 
+                let spiral_options = {
+                    match config
+                        .value_of("spiral_level")
+                        .expect("we've provided a default value")
+                    {
+                        // remember to update requirement checks in command building
+                        "3" => std_dev::regression::spiral::Options::fast(),
+                        "6" => std_dev::regression::spiral::Options::new(),
+                        _ => {
+                            unreachable!()
+                        }
+                    }
+                };
+
                 let linear_estimator = {
                     if config.is_present("theil_sen") {
                         std_dev::regression::LinearTheilSen.boxed()
                     } else if config.is_present("spiral") {
-                        std_dev::regression::LinearSpiralManhattanDistance.boxed()
+                        std_dev::regression::LinearSpiralManhattanDistance(spiral_options.clone())
+                            .boxed()
                     } else {
                         std_dev::regression::LinearOls.boxed()
                     }
@@ -362,7 +386,10 @@ fn main() {
                             if config.is_present("theil_sen") {
                                 std_dev::regression::PolynomialTheilSen.boxed()
                             } else if config.is_present("spiral") {
-                                std_dev::regression::PolynomialSpiralManhattanDistance.boxed()
+                                std_dev::regression::PolynomialSpiralManhattanDistance(
+                                    spiral_options,
+                                )
+                                .boxed()
                             } else {
                                 std_dev::regression::PolynomialOls.boxed()
                             }
