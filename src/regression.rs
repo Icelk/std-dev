@@ -2121,7 +2121,7 @@ pub mod spiral {
                     self.0.clone(),
                 )
                 .into(),
-                2 => polynomial(
+                2 => second_degree_polynomial(
                     |model| manhattan_distance(model, predictors, outcomes),
                     self.0.clone(),
                 ),
@@ -2132,9 +2132,19 @@ pub mod spiral {
 
     /// Options for the spiral.
     ///
+    /// See [module-level documentation](self) for more info about concepts.
+    ///
+    /// > The [`Self::range`] limit samples on the spiral. This causes a upper limit for
+    /// > coefficients and a lower "precision" cutoff. You can increase
+    /// > [`Self::exponent_coefficient`] if you know your data will have large numbers.
+    /// > The algorithm will increase the size of the spiral of a line outside the spiral is found.
+    ///
     /// Use a graphing tool (e.g. Desmos) and plot `r=ae^(kθ)`.
     /// a is [`Self::exponent_coefficient`].
-    /// k is [`Self::theta_coeffcient`].
+    /// k is [`Self::theta_coefficient`].
+    ///
+    /// To keep the same "size" of the spiral, you have to multiply both ends of [`Self::range`]
+    /// with the factor of [`Self::theta_coefficient`].
     ///
     /// # Performance
     ///
@@ -2142,20 +2152,20 @@ pub mod spiral {
     /// complexity of your `fitness_function`. That's often `O(n)` as you'd probably in some way
     /// sum up the points relative to the model.
     ///
-    /// The following options affect the performance as folows (roughly, no coefficients)
+    /// The following options affect the performance as follows (roughly, no coefficients)
     /// `O(num_lockon * samples_per_rotation * range.length)`.
     ///
-    /// Keep in mind you should not lower [`Self::theta_coeffcient`] bellow `0.15` if you don't increase
-    /// the [`Self::range`].
+    /// Keep in mind you should probably not lower [`Self::theta_coefficient`] bellow `0.15`
+    /// if you don't increase the [`Self::range`].
     #[must_use]
     #[derive(Debug, Clone, PartialEq)]
     pub struct Options {
         pub exponent_coefficient: f64,
-        pub theta_coeffcient: f64,
+        pub theta_coefficient: f64,
         pub num_lockon: usize,
         pub samples_per_rotation: f64,
         pub range: Range<f64>,
-        /// The turns of the 3d spiral when using [`polynomial`].
+        /// The turns of the 3d spiral when using [`second_degree_polynomial`].
         /// Frequency of turns per sphere. Is unnecessary to turn up when
         /// [`Self::samples_per_rotation`] is low.
         pub turns: f64,
@@ -2190,7 +2200,7 @@ pub mod spiral {
         }
     }
 
-    /// Samples points in phase space of the lines on a spiral (logarithmic).
+    /// Samples points in phase space of the lines on a logarithmic spiral.
     ///
     /// See [`Options`].
     pub fn linear(
