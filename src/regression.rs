@@ -2013,7 +2013,7 @@ pub mod theil_sen {
 ///
 /// You supply a `fitness_function` to all functions which tells the algorithm which lines are
 /// good. The magnitude is irrelevant, only order is considered. The algorithm tries to *minimize*
-/// the returned value. **This allows you to choose what the desired properties of resulting
+/// the returned value. **This allows you to choose the desired properties of resulting
 /// line/polynomial, without checking all possible values.**
 ///
 /// # Caveats
@@ -2023,6 +2023,12 @@ pub mod theil_sen {
 ///
 /// The sampling technique means this might miss the right point to close in on. Therefore, I
 /// highly recommend using the [higher quality options](spiral::Options::new).
+///
+/// ## Robustness
+///
+/// Since this uses a fitness function, the robustness is determined by that. Using the "default"
+/// [`spiral::manhattan_distance`] (e.g. [`LinearSpiralManhattanDistance`],
+/// [`PolynomialSpiralManhattanDistance`]) gives good results.
 ///
 /// # Performance
 ///
@@ -2081,8 +2087,8 @@ pub mod spiral {
         1.0 / error
     }
 
-    /// [`LinearEstimator`] for the spiral estimator using the fast [`manhattan_distance`] fitness
-    /// function.
+    /// [`LinearEstimator`] for the spiral estimator using the fast and robust
+    /// [`manhattan_distance`] fitness function.
     /// `O(n)`
     pub struct LinearSpiralManhattanDistance(pub Options);
     impl LinearEstimator for LinearSpiralManhattanDistance {
@@ -2102,8 +2108,8 @@ pub mod spiral {
             linear(|model| self.0(&model, predictors, outcomes), self.1.clone())
         }
     }
-    /// [`PolynomialEstimator`] for the spiral estimator using the fast [`manhattan_distance`] fitness
-    /// function.
+    /// [`PolynomialEstimator`] for the spiral estimator using the fast and robust
+    /// [`manhattan_distance`] fitness function.
     /// `O(n)`
     ///
     /// **IMPORTANT**: only supports degrees of 1&2.
