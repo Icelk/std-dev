@@ -42,6 +42,7 @@ pub use derived::{
     exponential, exponential_ols, power, power_ols, ExponentialCoefficients, PowerCoefficients,
 };
 pub use ols::{LinearOls, PolynomialOls};
+pub use spiral::{LinearSpiralManhattanDistance, PolynomialSpiralManhattanDistance};
 pub use theil_sen::{LinearTheilSen, PolynomialTheilSen};
 
 trait Model: Predictive + Display {}
@@ -134,7 +135,7 @@ pub trait Determination: Predictive {
 }
 impl<T: Predictive> Determination for T {}
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LinearCoefficients {
     /// slope, x coefficient
     pub k: f64,
@@ -156,9 +157,14 @@ impl Display for LinearCoefficients {
 /// The length of the inner vector is `degree + 1`.
 ///
 /// The inner list is in order of smallest exponent to largest: `[0, 2, 1]` means `y = 1x² + 2x + 0`.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PolynomialCoefficients {
     coefficients: Vec<f64>,
+}
+impl PolynomialCoefficients {
+    fn slice_mut(&mut self) -> &mut [f64] {
+        &mut self.coefficients
+    }
 }
 impl Deref for PolynomialCoefficients {
     type Target = [f64];
@@ -231,6 +237,13 @@ impl Predictive for PolynomialCoefficients {
         self.naive_predict(predictor)
     }
 }
+impl From<LinearCoefficients> for PolynomialCoefficients {
+    fn from(coefficients: LinearCoefficients) -> Self {
+        Self {
+            coefficients: vec![coefficients.m, coefficients.k],
+        }
+    }
+}
 
 /// Implemented by all methods yielding a linear 2 variable regression (a line).
 pub trait LinearEstimator {
@@ -247,6 +260,11 @@ pub trait LinearEstimator {
         Self: Sized + 'static,
     {
         Box::new(self)
+    }
+}
+impl<T: LinearEstimator + ?Sized> LinearEstimator for &T {
+    fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+        (**self).model(predictors, outcomes)
     }
 }
 /// Implemented by all methods yielding a polynomial regression.
@@ -419,7 +437,7 @@ pub fn best_fit(
     best.unwrap().0
 }
 /// Convenience function for [`best_fit`] using [`LinearOls`].
-pub fn best_fit_ols(predictors: &mut [f64], outcomes: &mut [f64]) -> DynModel {
+pub fn best_fit_ols(predictors: &[f64], outcomes: &[f64]) -> DynModel {
     best_fit(predictors, outcomes, &LinearOls)
 }
 
@@ -1382,7 +1400,7 @@ pub mod ols {
 }
 
 /// [Theil-Sen estimator](https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator), a robust
-/// linear estimator.
+/// linear (also implemented as polynomial) estimator.
 /// Up to ~27% of values can be *outliers* - erroneous data far from the otherwise good data -
 /// without large effects on the result.
 ///
@@ -1974,5 +1992,247 @@ pub mod theil_sen {
 
             assert_eq!(permutations, expected,);
         }
+    }
+}
+
+/// Spiral estimator, a robust sampling estimator.
+/// This should be more robust than [`theil_sen`].
+///
+/// > This is a brainchild of this library's lead developer [Icelk](mailto:Icelk<main@icelk.dev>).
+///
+/// The idea is to make a [phase space](https://en.wikipedia.org/wiki/Phase_space)
+/// of the parameters to a line (`y=(slope)*x + (y-intersect)`). We then traverse the phase space
+/// with a [logarithmic spiral](https://en.wikipedia.org/wiki/Logarithmic_spiral)
+/// and sample points (we start at e.g. `-12π` and at most go to `12π`)
+/// on an interval. When the range of the spiral has been sampled, we choose the best point and
+/// create a spiral there. Then repeat the steps.
+///
+/// Parameters are chosen for an optimal spiral. The logarithmic spiral was choosen due to the
+/// distribution of unknown numbers (which the coefficients of the line are). There's generally
+/// more numbers in the range 0..100 than in 100..200. Therefore, we search more numbers in 0..100.
+///
+/// We can do this in 3 dimensions by creating a 3d spiral. For this, I used a
+/// [spherical spiral](https://en.wikipedia.org/wiki/Spiral#Spherical_spirals)
+/// where the radius grows with the angle of the spiral, calculated by `e^(θk)` where `k` is a
+/// parameter, similar to how a logarithmic spiral is created.
+///
+/// > Can we get a spiral on a hypersphere? Or do we just need a even distribution?
+///
+/// See [`spiral::Options`] for more info on the parameters.
+pub mod spiral {
+    use super::*;
+    use std::f64::consts::{E, PI};
+    use std::ops::Range;
+
+    /// Like [`Determination::determination_slice`] but faster and more robust to outliers - values
+    /// aren't squared, which increases the magnitude of outliers.
+    pub fn manhattan_distance(model: &impl Predictive, predictors: &[f64], outcomes: &[f64]) -> f64 {
+        let mut error = 0.;
+        for (predictor, outcome) in predictors.iter().copied().zip(outcomes.iter().copied()) {
+            let predicted = model.predict_outcome(predictor);
+            let length = (predicted - outcome).abs();
+            error += length;
+        }
+        1.0 / error
+    }
+
+    /// [`LinearEstimator`] for the spiral estimator using the fast [`manhattan_distance`] fitness
+    /// function.
+    pub struct LinearSpiralManhattanDistance;
+    impl LinearEstimator for LinearSpiralManhattanDistance {
+        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+            linear(
+                |model| manhattan_distance(&model, predictors, outcomes),
+                Default::default(),
+            )
+        }
+    }
+    /// [`PolynomialEstimator`] for the spiral estimator using the fast [`manhattan_distance`] fitness
+    /// function.
+    ///
+    /// **IMPORTANT**: only supports degrees of 1&2.
+    pub struct PolynomialSpiralManhattanDistance;
+    impl PolynomialEstimator for PolynomialSpiralManhattanDistance {
+        fn model(
+            &self,
+            predictors: &[f64],
+            outcomes: &[f64],
+            degree: usize,
+        ) -> PolynomialCoefficients {
+            match degree {
+                1 => linear(
+                    |model| manhattan_distance(&model, predictors, outcomes),
+                    Default::default(),
+                )
+                .into(),
+                2 => polynomial(
+                    |model| manhattan_distance(model, predictors, outcomes),
+                    Default::default(),
+                ),
+                _ => panic!("unsupported degree for polynomial spiral. Supports 1,2."),
+            }
+        }
+    }
+
+    /// Options for the spiral.
+    ///
+    /// Use a graphing tool (e.g. Desmos) and plot `r=ae^(kθ)`.
+    /// a is [`Self::exponent_coefficient`].
+    /// k is [`Self::theta_coeffcient`].
+    ///
+    /// # Performance
+    ///
+    /// The methods are `O(1)*O(fitness_function)` where `O(fitness_function)` is the time
+    /// complexity of your `fitness_function`. That's often `O(n)` as you'd probably in some way
+    /// sum up the points relative to the model.
+    ///
+    /// The following options affect the performance as folows (roughly, no coefficients)
+    /// `O(num_lockon * samples_per_rotation * range.length)`.
+    ///
+    /// Keep in mind you should not lower [`Self::theta_coeffcient`] bellow `0.15` if you don't increase
+    /// the [`Self::range`].
+    pub struct Options {
+        pub exponent_coefficient: f64,
+        pub theta_coeffcient: f64,
+        pub num_lockon: usize,
+        pub samples_per_rotation: f64,
+        pub range: Range<f64>,
+        /// The turns of the 3d spiral when using [`polynomial`].
+        /// Frequency of turns per sphere. Is unnecessary to turn up when
+        /// [`Self::samples_per_rotation`] is low.
+        pub turns: f64,
+    }
+    impl Options {
+        pub fn new() -> Self {
+            Self {
+                exponent_coefficient: 1.,
+                theta_coeffcient: 0.2,
+                num_lockon: 40,
+                samples_per_rotation: 30.,
+                range: (-12. * PI)..(12. * PI),
+                turns: 16.,
+            }
+        }
+        /// About 10x faster than the default config.
+        pub fn fast() -> Self {
+            Self {
+                exponent_coefficient: 1.,
+                theta_coeffcient: 0.2,
+                num_lockon: 10,
+                samples_per_rotation: 12.,
+                range: (-12. * PI)..(12. * PI),
+                turns: 16.,
+            }
+        }
+    }
+    impl Default for Options {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    /// Samples points in phase space of the lines on a spiral (logarithmic).
+    ///
+    /// See [`Options`].
+    pub fn linear(
+        fitness_function: impl Fn(LinearCoefficients) -> f64,
+        options: Options,
+    ) -> LinearCoefficients {
+        let Options {
+            exponent_coefficient,
+            theta_coeffcient,
+            num_lockon,
+            samples_per_rotation,
+            range,
+            turns: _,
+        } = options;
+        let advance = PI * 2. / samples_per_rotation;
+        let mut best = (f64::MIN, LinearCoefficients { k: 0., m: 0. });
+        let mut last_best = f64::MIN;
+
+        for i in 0..num_lockon {
+            let mut theta = range.start;
+            while theta < range.end {
+                let intersect =
+                    exponent_coefficient * E.powf(theta_coeffcient * theta) * theta.cos()
+                        + best.1.m;
+                let slope = exponent_coefficient * E.powf(theta_coeffcient * theta) * theta.sin()
+                    + best.1.k;
+
+                let fitness = fitness_function(LinearCoefficients {
+                    k: slope,
+                    m: intersect,
+                });
+                if fitness > best.0 {
+                    best = (
+                        fitness,
+                        LinearCoefficients {
+                            k: slope,
+                            m: intersect,
+                        },
+                    );
+                }
+
+                theta += advance;
+            }
+            if last_best == best.0 && i != 0 {
+                return best.1;
+            }
+            last_best = best.0;
+        }
+        best.1
+    }
+    /// Samples points in phase space of the lines on a spherical spiral. As θ increases, the
+    /// imaginary sphere's size is increased. This gives a good distribution of sample points in 3d
+    /// space.
+    ///
+    /// See [`Options`].
+    pub fn polynomial(
+        fitness_function: impl Fn(&PolynomialCoefficients) -> f64,
+        options: Options,
+    ) -> PolynomialCoefficients {
+        let Options {
+            exponent_coefficient,
+            theta_coeffcient,
+            num_lockon,
+            samples_per_rotation,
+            range,
+            turns,
+        } = options;
+        let advance = PI * 2. / samples_per_rotation;
+
+        let polynomial_identity = PolynomialCoefficients {
+            coefficients: vec![0., 0., 0.],
+        };
+        let mut best = (f64::MIN, polynomial_identity.clone());
+        let mut last_best = f64::MIN;
+
+        let mut current_coefficients = polynomial_identity;
+
+        for i in 0..num_lockon {
+            let mut theta = range.start;
+            while theta < range.end {
+                let r = E.powf(theta * theta_coeffcient) * exponent_coefficient;
+                let a = r * theta.sin() * (turns * theta).cos() + best.1[0];
+                let b = r * theta.sin() * (turns * theta).sin() + best.1[1];
+                let c = r * theta.cos() + best.1[2];
+
+                current_coefficients.slice_mut()[0] = a;
+                current_coefficients.slice_mut()[1] = b;
+                current_coefficients.slice_mut()[2] = c;
+
+                let fitness = fitness_function(&current_coefficients);
+                if fitness > best.0 {
+                    best = (fitness, current_coefficients.clone());
+                }
+
+                theta += advance;
+            }
+            if last_best == best.0 && i != 0 {
+                return best.1;
+            }
+            last_best = best.0;
+        }
+        best.1
     }
 }
