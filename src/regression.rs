@@ -2060,7 +2060,7 @@ pub mod theil_sen {
 /// See [`spiral::Options`] for more info on the parameters.
 pub mod spiral {
     use super::*;
-    use std::f64::consts::{E, PI};
+    use std::f64::consts::{E, TAU};
     use std::ops::Range;
 
     /// Like [`Determination::determination_slice`] but faster and more robust to outliers - values
@@ -2174,22 +2174,22 @@ pub mod spiral {
         /// Default, with a good trade-off between speed and precision.
         pub fn new() -> Self {
             Self {
-                exponent_coefficient: 100.,
-                theta_coeffcient: 0.1,
-                num_lockon: 30,
-                samples_per_rotation: 30.,
-                range: (-24. * PI)..(24. * PI),
+                exponent_coefficient: 10.,
+                theta_coefficient: 0.07,
+                num_lockon: 16,
+                samples_per_rotation: 47.,
+                range: (-6. * TAU)..(6. * TAU),
                 turns: 16.,
             }
         }
-        /// About 10x faster than [`Self::new`].
+        /// About 4x faster than [`Self::new`].
         pub fn fast() -> Self {
             Self {
-                exponent_coefficient: 50.,
-                theta_coeffcient: 0.2,
-                num_lockon: 15,
-                samples_per_rotation: 24.,
-                range: (-12. * PI)..(12. * PI),
+                exponent_coefficient: 10.,
+                theta_coefficient: 0.13,
+                num_lockon: 8,
+                samples_per_rotation: 37.,
+                range: (-4. * TAU)..(4. * TAU),
                 turns: 16.,
             }
         }
@@ -2209,13 +2209,13 @@ pub mod spiral {
     ) -> LinearCoefficients {
         let Options {
             mut exponent_coefficient,
-            theta_coeffcient,
+            theta_coefficient,
             num_lockon,
             samples_per_rotation,
             range,
             turns: _,
         } = options;
-        let advance = PI * 2. / samples_per_rotation;
+        let advance = TAU / samples_per_rotation;
         let mut best = ((f64::MIN, 1.), LinearCoefficients { k: 0., m: 0. });
         let mut last_best = f64::MIN;
 
@@ -2223,9 +2223,9 @@ pub mod spiral {
             let mut theta = range.start;
             while theta < range.end {
                 let intersect =
-                    exponent_coefficient * E.powf(theta_coeffcient * theta) * theta.cos()
+                    exponent_coefficient * E.powf(theta_coefficient * theta) * theta.cos()
                         + best.1.m;
-                let slope = exponent_coefficient * E.powf(theta_coeffcient * theta) * theta.sin()
+                let slope = exponent_coefficient * E.powf(theta_coefficient * theta) * theta.sin()
                     + best.1.k;
 
                 let fitness = fitness_function(LinearCoefficients {
@@ -2260,19 +2260,19 @@ pub mod spiral {
     /// space.
     ///
     /// See [`Options`].
-    pub fn polynomial(
+    pub fn second_degree_polynomial(
         fitness_function: impl Fn(&PolynomialCoefficients) -> f64,
         options: Options,
     ) -> PolynomialCoefficients {
         let Options {
             mut exponent_coefficient,
-            theta_coeffcient,
+            theta_coefficient,
             num_lockon,
             samples_per_rotation,
             range,
             turns,
         } = options;
-        let advance = PI * 2. / samples_per_rotation;
+        let advance = TAU / samples_per_rotation;
 
         let polynomial_identity = PolynomialCoefficients {
             coefficients: vec![0., 0., 0.],
@@ -2285,7 +2285,7 @@ pub mod spiral {
         for i in 0..num_lockon {
             let mut theta = range.start;
             while theta < range.end {
-                let r = E.powf(theta * theta_coeffcient) * exponent_coefficient;
+                let r = E.powf(theta * theta_coefficient) * exponent_coefficient;
                 let a = r * theta.sin() * (turns * theta).cos() + best.1[0];
                 let b = r * theta.sin() * (turns * theta).sin() + best.1[1];
                 let c = r * theta.cos() + best.1[2];
