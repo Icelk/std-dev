@@ -39,14 +39,14 @@ Alternatively, use the `--print` option to yourself write the completion file.
 When using this as a library, I recommend disabling all features (except `base`) (`std-dev = { version = "0.1", default-features = false, features = ["base"] }`)
 and enabling those you need.
 
-- `bin` (default, binary feature): This enables the binary to compile.
-- `prettier` (default, binary feature): Makes the binary output prettier. Includes colours and prompts for interactive use.
-- `completion` (default, binary feature): Enable the ability to generate shell completions.
-- `regression` (default, library and binary feature): Enables all regression estimators. This requires `nalgebra`, which provides linear algebra.
-- `arbitrary-precision` (default, library feature): Uses arbitrary precision algebra for >10 degree polynomial regression.
-- `percentile-rand` (default, base, library feature): Enables the recommended `pivot_fn` for percentile-related functions.
-- `simplify-fraction` (default, base, library feature): Fractions are simplified. Relaxes the requirements for fraction input and implements Eq & Ord for fractions.
-- `generic-impls` (default, base, library feature): Makes `mean`, `standard_deviation`, and percentile resolving generic over numbers. This enables you to use numerical types from other libraries without hassle.
+-   `bin` (default, binary feature): This enables the binary to compile.
+-   `prettier` (default, binary feature): Makes the binary output prettier. Includes colours and prompts for interactive use.
+-   `completion` (default, binary feature): Enable the ability to generate shell completions.
+-   `regression` (default, library and binary feature): Enables all regression estimators. This requires `nalgebra`, which provides linear algebra.
+-   `arbitrary-precision` (default, library feature): Uses arbitrary precision algebra for >10 degree polynomial regression.
+-   `percentile-rand` (default, base, library feature): Enables the recommended `pivot_fn` for percentile-related functions.
+-   `simplify-fraction` (default, base, library feature): Fractions are simplified. Relaxes the requirements for fraction input and implements Eq & Ord for fractions.
+-   `generic-impls` (default, base, library feature): Makes `mean`, `standard_deviation`, and percentile resolving generic over numbers. This enables you to use numerical types from other libraries without hassle.
 
 # Performance
 
