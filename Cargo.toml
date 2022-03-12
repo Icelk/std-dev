@@ -27,10 +27,13 @@ iter-set = { version = "2.0", optional = true }
 colored = { version = "2.0", optional = true }
 atty = { version = "0.2.14", optional = true }
 clap = { version = "3.1", optional = true, features = ["cargo"] }
-poloto = { version = "=7.2", optional = true, default-features = false }
+clap_complete = { version = "3.1", optional = true }
+poloto = { version = "7", optional = true, default-features = false }
+get-shell = { version = "0.1", optional = true }
+xdg = { version = "2.4", optional = true }
 
 [features]
-default = ["bin", "pretty", "regression", "percentile-rand", "simplify-fraction", "generic-impls"]
+default = ["bin", "pretty", "completion", "regression", "percentile-rand", "simplify-fraction", "generic-impls"]
 
 # Very commonly used features
 base = ["percentile-rand", "simplify-fraction", "generic-impls"]
@@ -65,6 +68,9 @@ bin = ["clap", "poloto"]
 
 # Prettier bin output
 pretty = ["bin", "atty", "colored"]
+
+# Shell completion output
+completion = ["clap_complete", "get-shell", "xdg"]
 
 # Build with `--profile production`
 [profile.production]

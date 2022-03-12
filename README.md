@@ -27,6 +27,13 @@ an interactive **CLI** program, and through **piping** data to it, through stand
 It accepts any comma/space separated values. Scientific notation is supported.
 This is minimalistic by design, as other programs may be used to produce/modify the data before it's processed by us.
 
+## Shell completion
+
+Using the subcommand `completion`, std-dev automatically generates shell completions for your shell and tries to put them in the appropriate location.
+
+When using Bash or Zsh, you should run std-dev as root, as we need root privileges to write to their completion directories.
+Alternatively, use the `--print` option to yourself write the completion file.
+
 # Cargo features
 
 When using this as a library, I recommend disabling all features (except `base`) (`std-dev = { version = "0.1", default-features = false, features = ["base"] }`)
@@ -34,6 +41,7 @@ and enabling those you need.
 
 - `bin` (default, binary feature): This enables the binary to compile.
 - `prettier` (default, binary feature): Makes the binary output prettier. Includes colours and prompts for interactive use.
+- `completion` (default, binary feature): Enable the ability to generate shell completions.
 - `regression` (default, library and binary feature): Enables all regression estimators. This requires `nalgebra`, which provides linear algebra.
 - `arbitrary-precision` (default, library feature): Uses arbitrary precision algebra for >10 degree polynomial regression.
 - `percentile-rand` (default, base, library feature): Enables the recommended `pivot_fn` for percentile-related functions.

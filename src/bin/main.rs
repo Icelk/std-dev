@@ -1,20 +1,21 @@
+use clap::{Arg, ValueHint};
 use std::env;
-use std::io::{stdin, BufRead};
-use std::process::exit;
-use std::str::FromStr;
-use std::time::Instant;
-
-use clap::Arg;
-
 #[cfg(feature = "regression")]
 use std::fmt::Display;
 #[cfg(feature = "regression")]
 use std::io::Write;
-pub use std_dev;
+use std::io::{stdin, BufRead};
+use std::process::exit;
+use std::str::FromStr;
+use std::time::Instant;
 #[cfg(feature = "regression")]
 use std_dev::regression::{
     Determination, DynModel, LinearEstimator, PolynomialEstimator, Predictive,
 };
+
+#[cfg(feature = "completion")]
+mod complete;
+pub use std_dev;
 
 fn parse<T: FromStr>(s: &str) -> Option<T> {
     if let Ok(v) = s.parse() {
@@ -160,7 +161,9 @@ fn main() {
     let mut app = clap::command!();
 
     app = app
-        .arg(Arg::new("debug-performance").short('p').long("debug-performance"))
+        .about("Statistics calculation tool.\n\
+            A common pattern is to cat files and pipe the data.")
+        .arg(Arg::new("debug-performance").short('p').long("debug-performance").help("Print performance information. Can also be enabled by setting the DEBUG_PERFORMANCE environment variable."))
         .arg(Arg::new("multiline")
             .short('m')
             .long("multiline")
@@ -173,7 +176,13 @@ fn main() {
                   The determination will be 4 decimal places long. When this is set, all numbers are rounded.")
             .takes_value(true)
             .validator(|v| v.parse::<usize>().map_err(|_| "precision needs to be a positive integer".to_owned()))
+            .value_hint(ValueHint::Other)
         );
+
+    #[cfg(feature = "completion")]
+    {
+        app = complete::add_subcommand(app);
+    }
 
     #[cfg(feature = "regression")]
     {
@@ -198,6 +207,7 @@ fn main() {
                 .help("Degree of polynomial.")
                 .takes_value(true)
                 .validator(|o| o.parse::<usize>().map_err(|_| "Degree must be an integer".to_owned()))
+                .value_hint(ValueHint::Other)
             )
             .arg(Arg::new("linear")
                  .short('l')
@@ -241,6 +251,7 @@ fn main() {
                 .possible_value("3")
                 .possible_value("6")
                 .default_value("6")
+                .value_hint(ValueHint::Other)
             )
             .arg(Arg::new("plot")
                 .long("plot")
@@ -251,35 +262,54 @@ fn main() {
                 .help("File name (without extension) for SVG plot.")
                 .takes_value(true)
                 .requires("plot")
+                .value_hint(ValueHint::FilePath)
             )
             .arg(Arg::new("plot_samples")
                 .long("plot-samples")
                 .help("Count of sample points when drawing the curve. Always set to 2 for linear regressions.")
                 .takes_value(true)
                 .requires("plot")
+                .value_hint(ValueHint::Other)
             )
             .arg(Arg::new("plot_title")
                 .long("plot-title")
                 .help("Title of plot.")
                 .takes_value(true)
                 .requires("plot")
+                .value_hint(ValueHint::Other)
             )
             .arg(Arg::new("plot_x_axis")
                 .long("plot-axis-x")
                 .help("Name of x axis of plot (the first column of data).")
                 .takes_value(true)
                 .requires("plot")
+                .value_hint(ValueHint::Other)
             )
             .arg(Arg::new("plot_y_axis")
                 .long("plot-axis-y")
                 .help("Name of y axis of plot (the second column of data).")
                 .takes_value(true)
                 .requires("plot")
+                .value_hint(ValueHint::Other)
             )
         );
     }
 
+    #[cfg(feature = "completion")]
+    let command = app.clone();
     let matches = app.get_matches();
+
+    #[cfg(feature = "completion")]
+    {
+        match complete::test_subcommand(&matches, command) {
+            Some(Ok(())) => exit(0),
+            Some(Err(s)) => {
+                eprintln!("{s}");
+                exit(1)
+            }
+            None => {}
+        }
+    }
 
     let debug_performance = env::var("DEBUG_PERFORMANCE").ok().map_or_else(
         || matches.is_present("debug-performance"),
