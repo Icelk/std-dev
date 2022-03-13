@@ -383,7 +383,15 @@ fn main() {
                         std_dev::regression::LinearSpiralManhattanDistance(spiral_options.clone())
                             .boxed()
                     } else {
-                        std_dev::regression::LinearOls.boxed()
+                        #[cfg(feature = "ols")]
+                        {
+                            std_dev::regression::LinearOls.boxed()
+                        }
+                        #[cfg(not(feature = "ols"))]
+                        {
+                            eprintln!("No estimator specified. Consider enabling the OLS feature or explicitly specifying an estimator.");
+                            exit(1);
+                        }
                     }
                 };
 
@@ -428,7 +436,15 @@ fn main() {
                                 )
                                 .boxed()
                             } else {
-                                std_dev::regression::PolynomialOls.boxed()
+                                #[cfg(feature = "ols")]
+                                {
+                                    std_dev::regression::PolynomialOls.boxed()
+                                }
+                                #[cfg(not(feature = "ols"))]
+                                {
+                                    eprintln!("No estimator specified. Consider enabling the OLS feature or explicitly specifying an estimator.");
+                                    exit(1);
+                                }
                             }
                         };
 

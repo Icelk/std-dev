@@ -1,3 +1,4 @@
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::{hash, ops};
@@ -11,8 +12,10 @@ pub mod percentile;
 #[cfg(feature = "percentile-rand")]
 pub use percentile::percentile_rand;
 pub use percentile::{median, percentile, Fraction};
+#[cfg(feature = "ols")]
+pub use regression::best_fit_ols as regression_best_fit;
 #[cfg(feature = "regression")]
-pub use regression::{best_fit_ols as regression_best_fit, Determination, Predictive};
+pub use regression::{Determination, Predictive};
 
 use self::percentile::cluster;
 

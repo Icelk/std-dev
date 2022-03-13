@@ -31,7 +31,7 @@ clap_autocomplete = { version = "0.1", optional = true }
 poloto = { version = "7", optional = true, default-features = false }
 
 [features]
-default = ["bin", "pretty", "completion", "regression", "percentile-rand", "simplify-fraction", "generic-impls"]
+default = ["bin", "pretty", "completion", "regression", "ols", "percentile-rand", "simplify-fraction", "generic-impls"]
 
 # Very commonly used features
 base = ["percentile-rand", "simplify-fraction", "generic-impls"]
@@ -40,7 +40,14 @@ base = ["percentile-rand", "simplify-fraction", "generic-impls"]
 # Library features (also applies to binary)
 ##
 
-regression = ["nalgebra"]
+regression = []
+
+# Enables the Ordinary Least Squares estimator.
+#
+# This also allows Theil-Sen polynomial estimator with degrees > 2
+# and polynomial regression in the `best_fit` functions.
+ols = ["nalgebra", "regression"]
+
 # Arbitrary precision for regression.
 #
 # Increases max degree of polynomial (with good results).

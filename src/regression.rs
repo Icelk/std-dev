@@ -38,9 +38,10 @@
 use std::fmt::{self, Display};
 use std::ops::Deref;
 
-pub use derived::{
-    exponential, exponential_ols, power, power_ols, ExponentialCoefficients, PowerCoefficients,
-};
+pub use derived::{exponential, power, ExponentialCoefficients, PowerCoefficients};
+#[cfg(feature = "ols")]
+pub use derived::{exponential_ols, power_ols};
+#[cfg(feature = "ols")]
 pub use ols::{LinearOls, PolynomialOls};
 pub use spiral::{LinearSpiralManhattanDistance, PolynomialSpiralManhattanDistance};
 pub use theil_sen::{LinearTheilSen, PolynomialTheilSen};
@@ -327,10 +328,14 @@ pub fn best_fit(
     /// Used to partially mitigate [overfitting](https://en.wikipedia.org/wiki/Overfitting).
     ///
     /// Multiplicative
+    // `TODO`: remove when we use generic polynomial provider
+    #[allow(unused)]
     const SECOND_DEGREE_DISADVANTAGE: f64 = 0.94;
     /// Used to partially mitigate [overfitting](https://en.wikipedia.org/wiki/Overfitting).
     ///
     /// Multiplicative
+    // `TODO`: remove when we use generic polynomial provider
+    #[allow(unused)]
     const THIRD_DEGREE_DISADVANTAGE: f64 = 0.9;
 
     let mut best: Option<(DynModel, f64)> = None;
@@ -415,6 +420,8 @@ pub fn best_fit(
 
         update_best!(exponential, e, e * exponential_bump, certainty);
     }
+    // `TODO`: use generic polynomial provider.
+    #[cfg(feature = "ols")]
     if predictors.len() > 15 {
         let degree_2 = ols::polynomial(
             predictors.iter().copied(),
@@ -425,6 +432,7 @@ pub fn best_fit(
 
         update_best!(degree_2, e, e * SECOND_DEGREE_DISADVANTAGE);
     }
+    #[cfg(feature = "ols")]
     if predictors.len() > 50 {
         let degree_3 = ols::polynomial(
             predictors.iter().copied(),
@@ -442,6 +450,7 @@ pub fn best_fit(
     best.unwrap().0
 }
 /// Convenience function for [`best_fit`] using [`LinearOls`].
+#[cfg(feature = "ols")]
 pub fn best_fit_ols(predictors: &[f64], outcomes: &[f64]) -> DynModel {
     best_fit(predictors, outcomes, &LinearOls)
 }
@@ -501,6 +510,7 @@ pub mod derived {
     }
 
     /// Convenience-method for [`power`] using [`LinearOls`].
+    #[cfg(feature = "ols")]
     pub fn power_ols(predictors: &mut [f64], outcomes: &mut [f64]) -> PowerCoefficients {
         power(predictors, outcomes, &LinearOls)
     }
@@ -625,6 +635,7 @@ pub mod derived {
     }
 
     /// Convenience-method for [`exponential`] using [`LinearOls`].
+    #[cfg(feature = "ols")]
     pub fn exponential_ols(
         predictors: &mut [f64],
         outcomes: &mut [f64],
@@ -1262,6 +1273,7 @@ pub mod arbitrary_linear_algebra {
 ///
 /// [Linear regression](https://towardsdatascience.com/implementing-linear-and-polynomial-regression-from-scratch-f1e3d422e6b4)
 /// [How the linear algebra works](https://medium.com/@andrew.chamberlain/the-linear-algebra-view-of-least-squares-regression-f67044b7f39b)
+#[cfg(feature = "ols")]
 pub mod ols {
     use super::*;
 
@@ -1842,6 +1854,11 @@ pub mod theil_sen {
                     iter.give_buffer(buf);
                 }
             }
+            #[cfg(not(feature = "ols"))]
+            _ => {
+                panic!("unsupported degree for polynomial Theil-Sen. Supports 1,2 without the OLS cargo feature.");
+            }
+            #[cfg(feature = "ols")]
             _ => {
                 while let Some(buf) = iter.next() {
                     #[inline(always)]
