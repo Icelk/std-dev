@@ -323,7 +323,8 @@ fn main() {
 
     'main: loop {
         let multiline = {
-            matches.is_present("multiline") || matches!(matches.subcommand_name(), Some("regression"))
+            matches.is_present("multiline")
+                || matches!(matches.subcommand_name(), Some("regression"))
         };
         let input = if let Some(i) = input(tty, debug_performance, multiline, &mut last_prompt) {
             i
