@@ -82,3 +82,7 @@ completion = ["clap_autocomplete"]
 inherits = "release"
 lto = true
 opt-level = "s"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
