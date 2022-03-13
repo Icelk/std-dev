@@ -13,8 +13,6 @@ use std_dev::regression::{
     Determination, DynModel, LinearEstimator, PolynomialEstimator, Predictive,
 };
 
-#[cfg(feature = "completion")]
-mod complete;
 pub use std_dev;
 
 fn parse<T: FromStr>(s: &str) -> Option<T> {
@@ -181,7 +179,7 @@ fn main() {
 
     #[cfg(feature = "completion")]
     {
-        app = complete::add_subcommand(app);
+        app = clap_autocomplete::add_subcommand(app);
     }
 
     #[cfg(feature = "regression")]
@@ -301,7 +299,7 @@ fn main() {
 
     #[cfg(feature = "completion")]
     {
-        match complete::test_subcommand(&matches, command) {
+        match clap_autocomplete::test_subcommand(&matches, command) {
             Some(Ok(())) => exit(0),
             Some(Err(s)) => {
                 eprintln!("{s}");
