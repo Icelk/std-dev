@@ -520,7 +520,7 @@ fn main() {
                         model.determination(x_iter, y_iter, len)
                     ));
 
-                    let mut plotter = plot.build().plot(
+                    let mut plotter = plot.build().stage().plot(
                         config.value_of("plot_title").unwrap_or("Regression"),
                         config.value_of("plot_x_axis").unwrap_or("predictors"),
                         config.value_of("plot_y_axis").unwrap_or("outcomes"),
