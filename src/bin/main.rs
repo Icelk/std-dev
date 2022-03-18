@@ -1,4 +1,5 @@
 use clap::{Arg, ValueHint};
+use poloto::prelude::PlotIteratorExt;
 use std::env;
 #[cfg(feature = "regression")]
 use std::fmt::Display;
@@ -499,8 +500,7 @@ fn main() {
                         .into_iter()
                         .map(|current| (current as f64 / (num_samples - 1) as f64) * range + x_min);
 
-                    let mut plot = poloto::data();
-                    plot.line(
+                    let line = poloto::build::line(
                         format!("{model:.*}", p.unwrap_or(2)),
                         x.filter_map(|x| {
                             let y = model.predict_outcome(x);
@@ -514,17 +514,21 @@ fn main() {
                             ))
                         }),
                     );
-                    plot.scatter("", x_iter.clone().zip(y_iter.clone()));
-                    plot.text(format!(
+                    let scatter =
+                        poloto::build::scatter("".to_owned(), x_iter.clone().zip(y_iter.clone()));
+                    let determination = poloto::build::text(format!(
                         "R² = {:.4}",
                         model.determination(x_iter, y_iter, len)
                     ));
 
-                    let mut plotter = plot.build().stage().plot(
-                        config.value_of("plot_title").unwrap_or("Regression"),
-                        config.value_of("plot_x_axis").unwrap_or("predictors"),
-                        config.value_of("plot_y_axis").unwrap_or("outcomes"),
-                    );
+                    let canvas = poloto::render::canvas();
+                    let mut plotter = canvas
+                        .build_with(poloto::plots!(line, scatter, determination), [], [])
+                        .plot(
+                            config.value_of("plot_title").unwrap_or("Regression"),
+                            config.value_of("plot_x_axis").unwrap_or("predictors"),
+                            config.value_of("plot_y_axis").unwrap_or("outcomes"),
+                        );
                     let data = poloto::disp(|a| plotter.render(a));
                     // Some scuffed styling to remove bar above R² value, move that closer to the
                     // equation, and to increase the width of the SVG.
