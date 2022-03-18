@@ -502,16 +502,17 @@ fn main() {
 
                     let line = poloto::build::line(
                         format!("{model:.*}", p.unwrap_or(2)),
-                        x.filter_map(|x| {
+                        x.map(|x| {
                             let y = model.predict_outcome(x);
-                            Some((
+                            (
                                 x,
                                 if num_samples < 5 || (y_min..y_max).contains(&y) {
                                     y
                                 } else {
-                                    return None;
+                                    // returning NAN makes the point disappear from the graph
+                                    f64::NAN
                                 },
-                            ))
+                            )
                         }),
                     );
                     let scatter =
