@@ -1,5 +1,4 @@
 use clap::{Arg, ValueHint};
-use poloto::prelude::PlotIteratorExt;
 use std::env;
 #[cfg(feature = "regression")]
 use std::fmt::Display;
@@ -523,7 +522,7 @@ fn main() {
                     ));
 
                     let canvas = poloto::render::canvas();
-                    let mut plotter = canvas
+                    let plotter = canvas
                         .build_with(poloto::plots!(line, scatter, determination), [], [])
                         .plot(
                             config.value_of("plot_title").unwrap_or("Regression"),
