@@ -522,13 +522,13 @@ fn main() {
                     ));
 
                     let canvas = poloto::render::canvas();
-                    let plotter = canvas
-                        .build_with(poloto::plots!(line, scatter, determination), [], [])
-                        .plot(
-                            config.value_of("plot_title").unwrap_or("Regression"),
-                            config.value_of("plot_x_axis").unwrap_or("predictors"),
-                            config.value_of("plot_y_axis").unwrap_or("outcomes"),
-                        );
+                    let plotter = poloto::simple_fmt!(
+                        canvas,
+                        poloto::plots!(line, scatter, determination),
+                        config.value_of("plot_title").unwrap_or("Regression"),
+                        config.value_of("plot_x_axis").unwrap_or("predictors"),
+                        config.value_of("plot_y_axis").unwrap_or("outcomes")
+                    );
                     let data = poloto::disp(|a| plotter.render(a));
                     // Some scuffed styling to remove bar above R² value, move that closer to the
                     // equation, and to increase the width of the SVG.
