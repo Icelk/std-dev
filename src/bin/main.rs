@@ -521,7 +521,7 @@ fn main() {
                         model.determination(x_iter, y_iter, len)
                     ));
 
-                    let canvas = poloto::render::canvas();
+                    let canvas = poloto::render::render_opt();
                     let plotter = poloto::simple_fmt!(
                         canvas,
                         poloto::plots!(line, scatter, determination),
