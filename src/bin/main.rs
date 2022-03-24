@@ -248,6 +248,7 @@ fn main() {
                 .takes_value(true)
                 .possible_value("3")
                 .possible_value("6")
+                .possible_value("9")
                 .default_value("6")
                 .value_hint(ValueHint::Other)
             )
@@ -371,6 +372,7 @@ fn main() {
                         // remember to update requirement checks in command building
                         "3" => std_dev::regression::spiral::Options::fast(),
                         "6" => std_dev::regression::spiral::Options::new(),
+                        "9" => std_dev::regression::spiral::Options::precise(),
                         _ => {
                             unreachable!()
                         }

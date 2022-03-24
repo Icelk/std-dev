@@ -2200,6 +2200,7 @@ pub mod spiral {
                 exponent_coefficient: 10.,
                 angle_coefficient: 0.07,
                 num_lockon: 16,
+                // these are odd values to avoid repeating the same angle on multiple turns
                 samples_per_rotation: 47.,
                 range: (-6. * TAU)..(6. * TAU),
                 turns: 16.,
@@ -2213,6 +2214,16 @@ pub mod spiral {
                 num_lockon: 8,
                 samples_per_rotation: 37.,
                 range: (-4. * TAU)..(4. * TAU),
+                turns: 16.,
+            }
+        }
+        pub fn precise() -> Self {
+            Self {
+                exponent_coefficient: 10.,
+                angle_coefficient: 0.05,
+                num_lockon: 32,
+                samples_per_rotation: 115.,
+                range: (-6. * TAU)..(6. * TAU),
                 turns: 16.,
             }
         }
