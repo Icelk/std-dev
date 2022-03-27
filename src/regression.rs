@@ -1275,7 +1275,54 @@ pub mod arbitrary_linear_algebra {
 /// [How the linear algebra works](https://medium.com/@andrew.chamberlain/the-linear-algebra-view-of-least-squares-regression-f67044b7f39b)
 #[cfg(feature = "ols")]
 pub mod ols {
+    use std::cell::RefCell;
+
+    use nalgebra::DMatrix;
+
     use super::*;
+
+    #[must_use]
+    struct RuntimeMatrices {
+        design: DMatrix<f64>,
+        transposed: DMatrix<f64>,
+        outcomes: DMatrix<f64>,
+        intermediary: DMatrix<f64>,
+        result: DMatrix<f64>,
+
+        len: usize,
+        degree: usize,
+    }
+    impl RuntimeMatrices {
+        fn new() -> Self {
+            Self {
+                design: DMatrix::zeros(0, 0),
+                transposed: DMatrix::zeros(0, 0),
+                outcomes: DMatrix::zeros(0, 0),
+                intermediary: DMatrix::zeros(0, 0),
+                result: DMatrix::zeros(0, 0),
+
+                len: 0,
+                degree: 0,
+            }
+        }
+        /// No guarantees are made to the content of the matrix.
+        #[inline]
+        fn resize(&mut self, len: usize, degree: usize) {
+            if self.len == len && self.degree == degree {
+                return;
+            }
+            let rows = len;
+            let columns = degree + 1;
+            self.design.resize_mut(rows, columns, 0.);
+            self.transposed.resize_mut(columns, rows, 0.);
+            self.outcomes.resize_mut(rows, 1, 0.);
+            self.intermediary.resize_mut(columns, columns, 0.);
+            self.result.resize_mut(columns, 1, 0.);
+            self.len = len;
+            self.degree = degree;
+        }
+    }
+    thread_local! {static RUNTIME: RefCell<RuntimeMatrices> = RefCell::new(RuntimeMatrices::new());}
 
     /// `O(n)`
     pub struct LinearOls;
@@ -1324,6 +1371,8 @@ pub mod ols {
         len: usize,
         degree: usize,
     ) -> PolynomialCoefficients {
+        // this is the same as [`polynomial_simple_preallocated`], but clearer for the reader
+        #[allow(unused)]
         fn polynomial_simple(
             predictors: impl Iterator<Item = f64> + Clone,
             outcomes: impl Iterator<Item = f64>,
@@ -1358,6 +1407,72 @@ pub mod ols {
             PolynomialCoefficients {
                 coefficients: result.iter().copied().collect(),
             }
+        }
+        // like [`polynomial_simple`], but with persistent allocations.
+        fn polynomial_simple_preallocated(
+            predictors: impl Iterator<Item = f64> + Clone,
+            outcomes: impl Iterator<Item = f64>,
+            len: usize,
+            degree: usize,
+        ) -> PolynomialCoefficients {
+            RUNTIME.with(move |runtime| {
+                let mut runtime = runtime.borrow_mut();
+                // cheap clone call, it's an iterator
+                let predictor_original = predictors.clone();
+                let mut predictor_iter = predictors;
+
+                runtime.resize(len, degree);
+
+                let RuntimeMatrices {
+                    design,
+                    transposed,
+                    outcomes: outcomes_matrix,
+                    intermediary,
+                    result,
+                    ..
+                } = &mut *runtime;
+
+                {
+                    let (rows, columns) = design.shape();
+                    for column in 0..columns {
+                        for row in 0..rows {
+                            let v = unsafe { design.get_unchecked_mut((row, column)) };
+                            *v = if column == 0 {
+                                1.0
+                            } else if column == 1 {
+                                predictor_iter.next().unwrap()
+                            } else {
+                                if row == 0 {
+                                    predictor_iter = predictor_original.clone();
+                                }
+                                predictor_iter.next().unwrap().powi(column as _)
+                            };
+                        }
+                    }
+                }
+                design.transpose_to(transposed);
+
+                {
+                    let rows = outcomes_matrix.nrows();
+                    for (row, outcome) in (0..rows).zip(outcomes) {
+                        let v = unsafe { outcomes_matrix.get_unchecked_mut((row, 0)) };
+                        *v = outcome;
+                    }
+                }
+
+                transposed.mul_to(design, intermediary);
+                if !intermediary.try_inverse_mut() {
+                    let im = std::mem::replace(intermediary, DMatrix::zeros(0, 0));
+                    let pseudo_inverse = im.pseudo_inverse(1e-8).unwrap();
+                    *intermediary = pseudo_inverse;
+                }
+                *intermediary *= &*transposed;
+                intermediary.mul_to(outcomes_matrix, result);
+
+                PolynomialCoefficients {
+                    coefficients: runtime.result.iter().copied().collect(),
+                }
+            })
         }
         #[cfg(feature = "arbitrary-precision")]
         fn polynomial_arbitrary(
@@ -1409,12 +1524,12 @@ pub mod ols {
 
         #[cfg(feature = "arbitrary-precision")]
         if degree < 10 {
-            polynomial_simple(predictors, outcomes, len, degree)
+            polynomial_simple_preallocated(predictors, outcomes, len, degree)
         } else {
             polynomial_arbitrary(predictors, outcomes, len, degree)
         }
         #[cfg(not(feature = "arbitrary-precision"))]
-        polynomial_simple(predictors, outcomes, len, degree)
+        polynomial_simple_preallocated(predictors, outcomes, len, degree)
     }
 }
 
