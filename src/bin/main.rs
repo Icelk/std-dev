@@ -159,22 +159,29 @@ fn main() {
     let mut app = clap::command!();
 
     app = app
-        .about("Statistics calculation tool.\n\
-            A common pattern is to cat files and pipe the data.")
-        .arg(Arg::new("debug-performance").short('p').long("debug-performance").help("Print performance information. Can also be enabled by setting the DEBUG_PERFORMANCE environment variable."))
-        .arg(Arg::new("multiline")
-            .short('m')
-            .long("multiline")
-            .help("Accept multiple lines as one input. Two consecutive newlines is treated as the series separator. When not doing regression analysis the second 'column' is the count of the first. Acts more like CSV.")
+        .about(
+            "Statistics calculation tool.\n\
+            A common pattern is to cat files and pipe the data.",
         )
-        .arg(Arg::new("precision")
-            .short('n')
-            .long("precision")
-            .help("Sets the precision of the output. When this isn't set, Rust decides how many digits to print. \
-                  The determination will be 4 decimal places long. When this is set, all numbers are rounded.")
-            .takes_value(true)
-            .validator(|v| v.parse::<usize>().map_err(|_| "precision needs to be a positive integer".to_owned()))
-            .value_hint(ValueHint::Other)
+        .arg(Arg::new("debug-performance").short('p').long("debug-performance").help(
+            "Print performance information. \
+                                        Can also be enabled by setting the DEBUG_PERFORMANCE environment variable.",
+        ))
+        .arg(Arg::new("multiline").short('m').long("multiline").help(
+            "Accept multiple lines as one input. Two consecutive newlines is treated as the series separator. \
+                  When not doing regression analysis the second 'column' is the count of the first. Acts more like CSV.",
+        ))
+        .arg(
+            Arg::new("precision")
+                .short('n')
+                .long("precision")
+                .help(
+                    "Sets the precision of the output. When this isn't set, Rust decides how many digits to print. \
+                  The determination will be 4 decimal places long. When this is set, all numbers are rounded.",
+                )
+                .takes_value(true)
+                .validator(|v| v.parse::<usize>().map_err(|_| "precision needs to be a positive integer".to_owned()))
+                .value_hint(ValueHint::Other),
         );
 
     #[cfg(feature = "completion")]
@@ -184,113 +191,109 @@ fn main() {
 
     #[cfg(feature = "regression")]
     {
-        app = app.subcommand(clap::Command::new("regression")
-            .about("Find a equation which describes the input data. Tries to automatically determine the model if no arguments specifying it are provided. \
+        app = app.subcommand(
+            clap::Command::new("regression")
+                .about(
+                    "Find a equation which describes the input data. \
+            Tries to automatically determine the model if no arguments specifying it are provided. \
             Predictors are the independent values (usually denoted `x`) from which we want a equation to get the \
-            outcomes - the dependant variables, usually `y` or `f(x)`.")
-            .group(clap::ArgGroup::new("model")
-                .arg("degree")
-                .arg("linear")
-                .arg("power")
-                .arg("exponential")
-            )
-            .group(clap::ArgGroup::new("estimator")
-                .arg("theil_sen")
-                .arg("spiral")
-                .arg("ols")
-            )
-            .arg(Arg::new("degree")
-                .short('d')
-                .long("degree")
-                .help("Degree of polynomial.")
-                .takes_value(true)
-                .validator(|o| o.parse::<usize>().map_err(|_| "Degree must be an integer".to_owned()))
-                .value_hint(ValueHint::Other)
-            )
-            .arg(Arg::new("linear")
-                 .short('l')
-                 .long("linear")
-                 .help("Tries to fit a line to the provided data.")
-            )
-            .arg(Arg::new("power")
-                .short('p')
-                .long("power")
-                .help("Tries to fit a curve defined by the equation `a * x^b` to the data.\
-                If any of the predictors are below 1, x becomes (x+c), where c is an offset to the predictors. This is due to the arithmetic issue of taking the log of negative numbers and 0.\
-                A negative addition term will be appended if any of the outcomes are below 1.")
-            )
-            .arg(Arg::new("exponential")
-                .short('e')
-                .visible_alias("growth")
-                .long("exponential")
-                .help("Tries to fit a curve defined by the equation `a * b^x` to the data. \
-                If any of the predictors are below 1, x becomes (x+c), where c is an offset to the predictors. This is due to the arithmetic issue of taking the log of negative numbers and 0. \
-                A negative addition term will be appended if any of the outcomes are below 1.")
-            )
-            .arg(Arg::new("ols")
-                .long("ols")
-                .help("Use the ordinary least squares estimator. No-op, as this is used by default. Linear time complexity.")
-            )
-            .arg(Arg::new("theil_sen")
-                .long("theil-sen")
-                .short('t')
-                .help("Use the Theil-Sen estimator instead of OLS for all models. O(n^degree).")
-            )
-            .arg(Arg::new("spiral")
-                .long("spiral")
-                .short('s')
-                .help("Use the spiral estimator instead of OLS for all models (only supports polynomial of degree 1&2). Linear time complexity.")
-            )
-            .arg(Arg::new("spiral_level")
-                .long("spiral-level")
-                .help("Speed preset of spiral estimator. Lower are faster. Currently, not all presets are implemented. These may change at any time.")
-                .requires("spiral")
-                .takes_value(true)
-                .possible_value("3")
-                .possible_value("6")
-                .possible_value("9")
-                .default_value("6")
-                .value_hint(ValueHint::Other)
-            )
-            .arg(Arg::new("plot")
-                .long("plot")
-                .help("Plots the regression and input variables in a SVG.")
-            )
-            .arg(Arg::new("plot_filename")
-                .long("plot-out")
-                .help("File name (without extension) for SVG plot.")
-                .takes_value(true)
-                .requires("plot")
-                .value_hint(ValueHint::FilePath)
-            )
-            .arg(Arg::new("plot_samples")
-                .long("plot-samples")
-                .help("Count of sample points when drawing the curve. Always set to 2 for linear regressions.")
-                .takes_value(true)
-                .requires("plot")
-                .value_hint(ValueHint::Other)
-            )
-            .arg(Arg::new("plot_title")
-                .long("plot-title")
-                .help("Title of plot.")
-                .takes_value(true)
-                .requires("plot")
-                .value_hint(ValueHint::Other)
-            )
-            .arg(Arg::new("plot_x_axis")
-                .long("plot-axis-x")
-                .help("Name of x axis of plot (the first column of data).")
-                .takes_value(true)
-                .requires("plot")
-                .value_hint(ValueHint::Other)
-            )
-            .arg(Arg::new("plot_y_axis")
-                .long("plot-axis-y")
-                .help("Name of y axis of plot (the second column of data).")
-                .takes_value(true)
-                .requires("plot")
-                .value_hint(ValueHint::Other)
-            )
+            outcomes - the dependant variables, usually `y` or `f(x)`.",
+                )
+                .group(clap::ArgGroup::new("model").arg("degree").arg("linear").arg("power").arg("exponential"))
+                .group(clap::ArgGroup::new("estimator").arg("theil_sen").arg("spiral").arg("ols"))
+                .arg(
+                    Arg::new("degree")
+                        .short('d')
+                        .long("degree")
+                        .help("Degree of polynomial.")
+                        .takes_value(true)
+                        .validator(|o| o.parse::<usize>().map_err(|_| "Degree must be an integer".to_owned()))
+                        .value_hint(ValueHint::Other),
+                )
+                .arg(Arg::new("linear").short('l').long("linear").help("Tries to fit a line to the provided data."))
+                .arg(Arg::new("power").short('p').long("power").help(
+                    "Tries to fit a curve defined by the equation `a * x^b` to the data.\
+                If any of the predictors are below 1, x becomes (x+c), where c is an offset to the predictors. \
+                This is due to the arithmetic issue of taking the log of negative numbers and 0.\
+                A negative addition term will be appended if any of the outcomes are below 1.",
+                ))
+                .arg(Arg::new("exponential").short('e').visible_alias("growth").long("exponential").help(
+                    "Tries to fit a curve defined by the equation `a * b^x` to the data. \
+                If any of the predictors are below 1, x becomes (x+c), where c is an offset to the predictors. \
+                This is due to the arithmetic issue of taking the log of negative numbers and 0. \
+                A negative addition term will be appended if any of the outcomes are below 1.",
+                ))
+                .arg(
+                    Arg::new("ols")
+                        .long("ols")
+                        .help("Use the ordinary least squares estimator. No-op, as this is used by default. Linear time complexity."),
+                )
+                .arg(
+                    Arg::new("theil_sen")
+                        .long("theil-sen")
+                        .short('t')
+                        .help("Use the Theil-Sen estimator instead of OLS for all models. O(n^degree)."),
+                )
+                .arg(Arg::new("spiral").long("spiral").short('s').help(
+                    "Use the spiral estimator instead of OLS for all models (only supports polynomial of degree 1&2). \
+                      A good result isn't guaranteed. Linear time complexity.",
+                ))
+                .arg(
+                    Arg::new("spiral_level")
+                        .long("spiral-level")
+                        .help(
+                            "Speed preset of spiral estimator. Lower are faster. Currently, not all presets are implemented. \
+                      These may change at any time.",
+                        )
+                        .requires("spiral")
+                        .takes_value(true)
+                        .possible_value("3")
+                        .possible_value("6")
+                        .possible_value("9")
+                        .default_value("6")
+                        .value_hint(ValueHint::Other),
+                )
+                .arg(Arg::new("plot").long("plot").help("Plots the regression and input variables in a SVG."))
+                .arg(
+                    Arg::new("plot_filename")
+                        .long("plot-out")
+                        .help("File name (without extension) for SVG plot.")
+                        .takes_value(true)
+                        .requires("plot")
+                        .value_hint(ValueHint::FilePath),
+                )
+                .arg(
+                    Arg::new("plot_samples")
+                        .long("plot-samples")
+                        .help("Count of sample points when drawing the curve. Always set to 2 for linear regressions.")
+                        .takes_value(true)
+                        .requires("plot")
+                        .value_hint(ValueHint::Other),
+                )
+                .arg(
+                    Arg::new("plot_title")
+                        .long("plot-title")
+                        .help("Title of plot.")
+                        .takes_value(true)
+                        .requires("plot")
+                        .value_hint(ValueHint::Other),
+                )
+                .arg(
+                    Arg::new("plot_x_axis")
+                        .long("plot-axis-x")
+                        .help("Name of x axis of plot (the first column of data).")
+                        .takes_value(true)
+                        .requires("plot")
+                        .value_hint(ValueHint::Other),
+                )
+                .arg(
+                    Arg::new("plot_y_axis")
+                        .long("plot-axis-y")
+                        .help("Name of y axis of plot (the second column of data).")
+                        .takes_value(true)
+                        .requires("plot")
+                        .value_hint(ValueHint::Other),
+                ),
         );
     }
 
