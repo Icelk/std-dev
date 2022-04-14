@@ -8,6 +8,7 @@ use std::io::{stdin, BufRead};
 use std::process::exit;
 use std::str::FromStr;
 use std::time::Instant;
+use std_dev::regression::LogisticEstimator;
 #[cfg(feature = "regression")]
 use std_dev::regression::{
     Determination, DynModel, LinearEstimator, PolynomialEstimator, Predictive,
@@ -165,11 +166,11 @@ fn main() {
         )
         .arg(Arg::new("debug-performance").short('p').long("debug-performance").help(
             "Print performance information. \
-                                        Can also be enabled by setting the DEBUG_PERFORMANCE environment variable.",
+            Can also be enabled by setting the DEBUG_PERFORMANCE environment variable.",
         ))
         .arg(Arg::new("multiline").short('m').long("multiline").help(
             "Accept multiple lines as one input. Two consecutive newlines is treated as the series separator. \
-                  When not doing regression analysis the second 'column' is the count of the first. Acts more like CSV.",
+            When not doing regression analysis the second 'column' is the count of the first. Acts more like CSV.",
         ))
         .arg(
             Arg::new("precision")
@@ -177,7 +178,7 @@ fn main() {
                 .long("precision")
                 .help(
                     "Sets the precision of the output. When this isn't set, Rust decides how many digits to print. \
-                  The determination will be 4 decimal places long. When this is set, all numbers are rounded.",
+                    The determination will be 4 decimal places long. When this is set, all numbers are rounded.",
                 )
                 .takes_value(true)
                 .validator(|v| v.parse::<usize>().map_err(|_| "precision needs to be a positive integer".to_owned()))
@@ -199,7 +200,7 @@ fn main() {
             Predictors are the independent values (usually denoted `x`) from which we want a equation to get the \
             outcomes - the dependant variables, usually `y` or `f(x)`.",
                 )
-                .group(clap::ArgGroup::new("model").arg("degree").arg("linear").arg("power").arg("exponential"))
+                .group(clap::ArgGroup::new("model").arg("degree").arg("linear").arg("power").arg("exponential").arg("logistic"))
                 .group(clap::ArgGroup::new("estimator").arg("theil_sen").arg("spiral").arg("ols"))
                 .arg(
                     Arg::new("degree")
@@ -224,9 +225,23 @@ fn main() {
                 A negative addition term will be appended if any of the outcomes are below 1.",
                 ))
                 .arg(
+                    Arg::new("logistic").long("logistic").help(
+                        "Tries to fit a curve defined by the logistic equation to the data. \
+                        This requires the use of the spiral estimator."
+                        )
+                        .conflicts_with("ols")
+                        .conflicts_with("theil_sen")
+                )
+                .group(
+                    clap::ArgGroup::new("required_spiral").arg("logistic").arg("spiral")
+                        .multiple(true)
+                        .conflicts_with("ols")
+                        .conflicts_with("theil_sen")
+                )
+                .arg(
                     Arg::new("ols")
                         .long("ols")
-                        .help("Use the ordinary least squares estimator. No-op, as this is used by default. Linear time complexity."),
+                        .help("Use the ordinary least squares estimator. Linear time complexity."),
                 )
                 .arg(
                     Arg::new("theil_sen")
@@ -242,10 +257,11 @@ fn main() {
                     Arg::new("spiral_level")
                         .long("spiral-level")
                         .help(
-                            "Speed preset of spiral estimator. Lower are faster. Currently, not all presets are implemented. \
-                      These may change at any time.",
+                            "Speed preset of spiral estimator. Lower are faster. \
+                            Currently, not all presets are implemented. \
+                            These may change at any time.",
                         )
-                        .requires("spiral")
+                        .requires("required_spiral")
                         .takes_value(true)
                         .possible_value("2")
                         .possible_value("3")
@@ -266,7 +282,8 @@ fn main() {
                 .arg(
                     Arg::new("plot_samples")
                         .long("plot-samples")
-                        .help("Count of sample points when drawing the curve. Always set to 2 for linear regressions.")
+                        .help("Count of sample points when drawing the curve. \
+                              Always set to 2 for linear regressions.")
                         .takes_value(true)
                         .requires("plot")
                         .value_hint(ValueHint::Other),
@@ -413,14 +430,24 @@ fn main() {
 
                 let model: DynModel = if config.is_present("power") {
                     let coefficients =
-                        std_dev::regression::power(&mut x, &mut y, &&*linear_estimator);
+                        std_dev::regression::derived::power(&mut x, &mut y, &&*linear_estimator);
 
                     DynModel::new(coefficients)
                 } else if config.is_present("exponential") {
-                    let coefficients =
-                        std_dev::regression::exponential(&mut x, &mut y, &&*linear_estimator);
+                    let coefficients = std_dev::regression::derived::exponential(
+                        &mut x,
+                        &mut y,
+                        &&*linear_estimator,
+                    );
 
                     DynModel::new(coefficients)
+                } else if config.is_present("logistic") {
+                    DynModel::new(
+                        std_dev::regression::LogisticSpiralManhattanDistance(
+                            spiral_options.clone(),
+                        )
+                        .model(&x, &y),
+                    )
                 } else if config.is_present("linear") || config.is_present("degree") {
                     let degree = {
                         if let Ok(degree) = config.value_of_t("degree") {
