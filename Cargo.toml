@@ -1,5 +1,9 @@
 [package]
 name = "std-dev"
+description = "Your Swiss Army knife for swiftly processing any amount of data. Implemented for industrial and educational purposes alike."
+# strip=true in profile below,
+# 1.56 for edition 2021
+rust-version = "1.59"
 version = "0.1.0"
 edition = "2021"
 
@@ -81,6 +85,7 @@ completion = ["clap_autocomplete"]
 [profile.production]
 inherits = "release"
 lto = true
+strip = true
 opt-level = "s"
 
 [package.metadata.docs.rs]
