@@ -376,8 +376,19 @@ pub mod models {
             let p = f.precision().unwrap_or(5);
             write!(
                 f,
-                "{:.3$} / (1 + e^(-{:.3$}(x - {:.3$})))",
-                self.l, self.k, self.x0, p
+                "{:.3$} / (1 + e^({}(x {})))",
+                self.l,
+                if self.k.is_sign_negative() {
+                    format!("{:.1$}", -self.k, p)
+                } else {
+                    format!("-{:.1$}", self.k, p)
+                },
+                if self.x0.is_sign_negative() {
+                    format!("+ {:.1$}", -self.x0, p)
+                } else {
+                    format!("- {:.1$}", self.x0, p)
+                },
+                p
             )
         }
     }
