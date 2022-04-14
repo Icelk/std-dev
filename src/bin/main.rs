@@ -298,6 +298,12 @@ fn main() {
         );
     }
 
+    #[cfg(feature = "regression")]
+    let spiral_polynomial_degree_error = app.error(
+        clap::ErrorKind::InvalidValue,
+        "spiral only supports polynomials of degree 1 & 2",
+    );
+
     #[cfg(feature = "completion")]
     let command = app.clone();
     let matches = app.get_matches();
@@ -439,6 +445,9 @@ fn main() {
                             if config.is_present("theil_sen") {
                                 std_dev::regression::PolynomialTheilSen.boxed()
                             } else if config.is_present("spiral") {
+                                if !(1..=2).contains(&degree) {
+                                    spiral_polynomial_degree_error.exit();
+                                }
                                 std_dev::regression::PolynomialSpiralManhattanDistance(
                                     spiral_options,
                                 )
