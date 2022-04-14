@@ -2415,7 +2415,7 @@ pub mod spiral {
         pub num_lockon: usize,
         pub samples_per_rotation: f64,
         pub range: Range<f64>,
-        /// The turns of the 3d spiral when using [`second_degree_polynomial`].
+        /// The turns of the 3d spiral when using [`three_variable_optimization`].
         /// Frequency of turns per sphere. Is unnecessary to turn up when
         /// [`Self::samples_per_rotation`] is low.
         pub turns: f64,
