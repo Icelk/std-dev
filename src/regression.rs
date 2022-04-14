@@ -2332,6 +2332,19 @@ pub mod spiral {
                 turns: 16.,
             }
         }
+        /// About 4x faster than [`Self::fast`].
+        /// About 3x slower than analytical OLS solution (which provides way less flexibility).
+        pub fn faster() -> Self {
+            Self {
+                exponent_coefficient: 10.,
+                angle_coefficient: 0.23,
+                num_lockon: 8,
+                samples_per_rotation: 19.,
+                range: (-2. * TAU)..(4. * TAU),
+                turns: 12.,
+            }
+        }
+        /// About 4x slower than [`Self::new`].
         pub fn precise() -> Self {
             Self {
                 exponent_coefficient: 10.,

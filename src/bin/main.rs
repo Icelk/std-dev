@@ -247,6 +247,7 @@ fn main() {
                         )
                         .requires("spiral")
                         .takes_value(true)
+                        .possible_value("2")
                         .possible_value("3")
                         .possible_value("6")
                         .possible_value("9")
@@ -373,6 +374,7 @@ fn main() {
                         .expect("we've provided a default value")
                     {
                         // remember to update requirement checks in command building
+                        "2" => std_dev::regression::spiral::Options::faster(),
                         "3" => std_dev::regression::spiral::Options::fast(),
                         "6" => std_dev::regression::spiral::Options::new(),
                         "9" => std_dev::regression::spiral::Options::precise(),
