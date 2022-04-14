@@ -2219,7 +2219,8 @@ pub mod spiral {
             let length = (predicted - outcome).abs();
             error += length;
         }
-        1.0 / error
+
+        0.0 - error
     }
 
     /// [`LinearEstimator`] for the spiral estimator using the fast and robust
