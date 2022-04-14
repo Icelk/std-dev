@@ -411,20 +411,16 @@ fn main() {
 
                 let now = Instant::now();
 
-                let model: DynModel = if config.is_present("power")
-                    || config.is_present("exponential")
-                {
-                    if config.is_present("power") {
-                        let coefficients =
-                            std_dev::regression::power(&mut x, &mut y, &&*linear_estimator);
-                        DynModel::new(coefficients)
-                    } else {
-                        assert!(config.is_present("exponential"));
+                let model: DynModel = if config.is_present("power") {
+                    let coefficients =
+                        std_dev::regression::power(&mut x, &mut y, &&*linear_estimator);
 
-                        let coefficients =
-                            std_dev::regression::exponential(&mut x, &mut y, &&*linear_estimator);
-                        DynModel::new(coefficients)
-                    }
+                    DynModel::new(coefficients)
+                } else if config.is_present("exponential") {
+                    let coefficients =
+                        std_dev::regression::exponential(&mut x, &mut y, &&*linear_estimator);
+
+                    DynModel::new(coefficients)
                 } else if config.is_present("linear") || config.is_present("degree") {
                     let degree = {
                         if let Ok(degree) = config.value_of_t("degree") {
