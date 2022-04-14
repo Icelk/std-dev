@@ -2477,10 +2477,13 @@ pub mod spiral {
     /// Samples points on a logarithmic spiral in the phase space of all possible straight lines.
     ///
     /// See [`Options`].
-    pub fn linear(
-        fitness_function: impl Fn(LinearCoefficients) -> f64,
+    ///
+    /// Can be used for models other than linear, as this just optimizes two floats according to
+    /// `fitness_function`. The returned values are the best match.
+    pub fn two_variable_optimization(
+        fitness_function: impl Fn([f64; 2]) -> f64,
         options: Options,
-    ) -> LinearCoefficients {
+    ) -> [f64; 2] {
         let Options {
             mut exponent_coefficient,
             angle_coefficient,
@@ -2490,30 +2493,20 @@ pub mod spiral {
             turns: _,
         } = options;
         let advance = TAU / samples_per_rotation;
-        let mut best = ((f64::MIN, 1.), LinearCoefficients { k: 0., m: 0. });
+        let mut best = ((f64::MIN, 1.), [0.; 2]);
         let mut last_best = f64::MIN;
 
         for i in 0..num_lockon {
             let mut theta = range.start;
             while theta < range.end {
-                let intersect =
-                    exponent_coefficient * E.powf(angle_coefficient * theta) * theta.cos()
-                        + best.1.m;
-                let slope = exponent_coefficient * E.powf(angle_coefficient * theta) * theta.sin()
-                    + best.1.k;
+                let a = exponent_coefficient * E.powf(angle_coefficient * theta) * theta.cos()
+                    + best.1[0];
+                let b = exponent_coefficient * E.powf(angle_coefficient * theta) * theta.sin()
+                    + best.1[1];
 
-                let fitness = fitness_function(LinearCoefficients {
-                    k: slope,
-                    m: intersect,
-                });
+                let fitness = fitness_function([a, b]);
                 if fitness > best.0 .0 {
-                    best = (
-                        (fitness, E.powf(angle_coefficient * theta)),
-                        LinearCoefficients {
-                            k: slope,
-                            m: intersect,
-                        },
-                    );
+                    best = ((fitness, E.powf(angle_coefficient * theta)), [a, b]);
                 }
 
                 theta += advance;
@@ -2540,10 +2533,13 @@ pub mod spiral {
     /// This gives a good distribution of sample points in 3d space.
     ///
     /// See [`Options`].
-    pub fn second_degree_polynomial(
-        fitness_function: impl Fn(&PolynomialCoefficients) -> f64,
+    ///
+    /// This function just optimizes three floats according to `fitness_function`.
+    /// The returned value is the best match.
+    pub fn three_variable_optimization(
+        fitness_function: impl Fn([f64; 3]) -> f64,
         options: Options,
-    ) -> PolynomialCoefficients {
+    ) -> [f64; 3] {
         // See the function above for more documentation.
         // This is the same, but with three dimensions instead.
         let Options {
@@ -2556,10 +2552,8 @@ pub mod spiral {
         } = options;
         let advance = TAU / samples_per_rotation;
 
-        let polynomial_identity = PolynomialCoefficients {
-            coefficients: vec![0., 0., 0.],
-        };
-        let mut best = ((f64::MIN, 1.), polynomial_identity.clone());
+        let polynomial_identity = [0.; 3];
+        let mut best = ((f64::MIN, 1.), polynomial_identity);
         let mut last_best = f64::MIN;
 
         let mut current_coefficients = polynomial_identity;
@@ -2572,16 +2566,13 @@ pub mod spiral {
                 let b = r * theta.sin() * (turns * theta).sin() + best.1[1];
                 let c = r * theta.cos() + best.1[2];
 
-                current_coefficients.slice_mut()[0] = a;
-                current_coefficients.slice_mut()[1] = b;
-                current_coefficients.slice_mut()[2] = c;
+                current_coefficients[0] = a;
+                current_coefficients[1] = b;
+                current_coefficients[2] = c;
 
-                let fitness = fitness_function(&current_coefficients);
+                let fitness = fitness_function(current_coefficients);
                 if fitness > best.0 .0 {
-                    best = (
-                        (fitness, r / exponent_coefficient),
-                        current_coefficients.clone(),
-                    );
+                    best = ((fitness, r / exponent_coefficient), current_coefficients);
                 }
 
                 theta += advance;
