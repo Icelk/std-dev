@@ -2162,13 +2162,16 @@ pub mod theil_sen {
 /// [`spiral::manhattan_distance`] (e.g. [`LinearSpiralManhattanDistance`],
 /// [`PolynomialSpiralManhattanDistance`]) gives good results.
 ///
+/// Since this tests a wide range of possibilities before deciding on one, it's very likely we
+/// don't get trapped in a local maxima.
+///
 /// # Performance
 ///
 /// The functions are `O(fitness function)` where `O(fitness function)` is the time
 /// complexity of your `fitness_function`. That's often `O(n)` as you'd probably in some way
 /// sum up the points relative to the model.
 ///
-/// This puts the algorithm similar to [`ols`], but with much worse (100x) performance.
+/// This puts the algorithm similar to [`ols`], but with much worse (read: 4x-100x) performance.
 /// This may be justified by the [advantages](#advantages).
 /// It scales much better than [`theil_sen`] and is more robust, but when the count of points is
 /// small, `theil_sen` is faster.
@@ -2406,6 +2409,7 @@ pub mod spiral {
 
                 theta += advance;
             }
+            // If the best didn't change, we aren't going to find better results.
             if last_best == best.0 .0 && i != 0 {
                 return best.1;
             }
@@ -2431,6 +2435,8 @@ pub mod spiral {
         fitness_function: impl Fn(&PolynomialCoefficients) -> f64,
         options: Options,
     ) -> PolynomialCoefficients {
+        // See the function above for more documentation.
+        // This is the same, but with three dimensions instead.
         let Options {
             mut exponent_coefficient,
             angle_coefficient,
