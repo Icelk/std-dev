@@ -21,6 +21,8 @@
 //!
 //! ## Power & exponent
 //!
+//! See [`derived`] for the implementations.
+//!
 //! I reverse the exponentiation to get a linear model. Then, I solve it using the method linked
 //! above. Then, I transform the returned variables to fit the target model.
 //!
@@ -34,6 +36,7 @@
 //! This is naturally a fallback, and should be a warning sign your data is bad.
 //!
 //! Under these methods the calculations are inserted, and how to handle the data.
+#![deny(missing_docs)]
 
 use std::fmt::{self, Display};
 use std::ops::Deref;
@@ -41,7 +44,6 @@ use std::ops::Deref;
 #[doc(inline)]
 pub use models::*;
 
-pub use derived::{exponential, power, ExponentialCoefficients, PowerCoefficients};
 #[cfg(feature = "ols")]
 pub use derived::{exponential_ols, power_ols};
 #[cfg(feature = "ols")]
@@ -57,6 +59,7 @@ pub struct DynModel {
     model: Box<dyn Model>,
 }
 impl DynModel {
+    /// Wrap `model` in a [`Box`].
     pub fn new(model: impl Predictive + Display + 'static) -> Self {
         Self {
             model: Box::new(model),
@@ -74,6 +77,7 @@ impl Display for DynModel {
     }
 }
 
+/// Something that can predict the outcome from a predictor.
 pub trait Predictive {
     /// Calculates the predicted outcome of `predictor`.
     fn predict_outcome(&self, predictor: f64) -> f64;
@@ -144,11 +148,15 @@ pub trait Determination: Predictive {
 }
 impl<T: Predictive> Determination for T {}
 
+/// The models (functions) we can use regression to optimize for.
+///
+/// You can naturally implement these yourself.
 pub mod models {
     use std::f64::consts::E;
 
     use super::*;
 
+    /// The coefficients of a line.
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub struct LinearCoefficients {
         /// slope, x coefficient
@@ -248,6 +256,46 @@ pub mod models {
             self.naive_predict(predictor)
         }
     }
+    /// The coefficients of a power (also called growth) function (`kx^e`).
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct PowerCoefficients {
+        /// Constant
+        pub k: f64,
+        /// exponent
+        pub e: f64,
+        /// If the predictors needs to have an offset applied to remove values under 1.
+        pub predictor_additive: Option<f64>,
+        /// If the outcomes needs to have an offset applied to remove values under 1.
+        pub outcome_additive: Option<f64>,
+    }
+    impl Predictive for PowerCoefficients {
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            self.k * (predictor + self.predictor_additive.unwrap_or(0.0)).powf(self.e)
+                - self.outcome_additive.unwrap_or(0.0)
+        }
+    }
+    impl Display for PowerCoefficients {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let p = f.precision().unwrap_or(5);
+            write!(
+                f,
+                "{:.3$} * {x}^{:.3$}{}",
+                self.k,
+                self.e,
+                if let Some(out) = self.outcome_additive {
+                    format!(" - {:.1$}", out, p)
+                } else {
+                    String::new()
+                },
+                p,
+                x = if let Some(pred) = self.predictor_additive {
+                    format!("(x + {:.1$})", pred, p)
+                } else {
+                    "x".to_string()
+                },
+            )
+        }
+    }
     impl From<LinearCoefficients> for PolynomialCoefficients {
         fn from(coefficients: LinearCoefficients) -> Self {
             Self {
@@ -263,6 +311,51 @@ pub mod models {
         }
     }
 
+    /// The coefficients of a exponential function (`kb^x`).
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct ExponentialCoefficients {
+        /// Constant
+        pub k: f64,
+        /// base
+        pub b: f64,
+        /// If the predictors needs to have an offset applied to remove values under 1.
+        pub predictor_additive: Option<f64>,
+        /// If the outcomes needs to have an offset applied to remove values under 1.
+        pub outcome_additive: Option<f64>,
+    }
+    impl Predictive for ExponentialCoefficients {
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            self.k
+                * self
+                    .b
+                    .powf(predictor + self.predictor_additive.unwrap_or(0.0))
+                - self.outcome_additive.unwrap_or(0.0)
+        }
+    }
+    impl Display for ExponentialCoefficients {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let p = f.precision().unwrap_or(5);
+            write!(
+                f,
+                "{:.3$} * {:.3$}^{x}{}",
+                self.k,
+                self.b,
+                if let Some(out) = self.outcome_additive {
+                    format!(" - {:.1$}", out, p)
+                } else {
+                    String::new()
+                },
+                p,
+                x = if let Some(pred) = self.predictor_additive {
+                    format!("(x + {:.1$})", pred, p)
+                } else {
+                    "x".to_string()
+                },
+            )
+        }
+    }
+
+    /// The coefficients of a [logistic function](https://en.wikipedia.org/wiki/Logistic_function).
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub struct LogisticCoefficients {
         /// The x value of the curve's midpoint
@@ -367,7 +460,7 @@ pub mod models {
 ///   This is due to the sub-optimal behaviour of logarithm with values close to and under 0.
 ///   This restriction might be lifted to just < 1e-9 in the future.
 /// - Power is heavily favoured if `let distance_from_integer = -(0.5 - exponent % 1).abs() + 0.5;
-/// distance_from_integer < 0.15 && -2.5 <= exponent <= 3.5`
+///   distance_from_integer < 0.15 && -2.5 <= exponent <= 3.5`
 /// - Power is also heavily favoured if the same as above occurs but with the reciprocal of the
 ///   exponent. Then, the range 0.5 < exponent.recip() <= 3.5 is considered.
 /// - Exponential favoured if R² > 0.8, which seldom happens with exponential regression.
@@ -530,46 +623,6 @@ pub mod derived {
             .map(|f| f.0)
     }
 
-    #[derive(Debug, Clone, PartialEq)]
-    pub struct PowerCoefficients {
-        /// Constant
-        pub k: f64,
-        /// exponent
-        pub e: f64,
-        /// If the predictors needs to have an offset applied to remove values under 1.
-        pub predictor_additive: Option<f64>,
-        /// If the outcomes needs to have an offset applied to remove values under 1.
-        pub outcome_additive: Option<f64>,
-    }
-    impl Predictive for PowerCoefficients {
-        fn predict_outcome(&self, predictor: f64) -> f64 {
-            self.k * (predictor + self.predictor_additive.unwrap_or(0.0)).powf(self.e)
-                - self.outcome_additive.unwrap_or(0.0)
-        }
-    }
-    impl Display for PowerCoefficients {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            let p = f.precision().unwrap_or(5);
-            write!(
-                f,
-                "{:.3$} * {x}^{:.3$}{}",
-                self.k,
-                self.e,
-                if let Some(out) = self.outcome_additive {
-                    format!(" - {:.1$}", out, p)
-                } else {
-                    String::new()
-                },
-                p,
-                x = if let Some(pred) = self.predictor_additive {
-                    format!("(x + {:.1$})", pred, p)
-                } else {
-                    "x".to_string()
-                },
-            )
-        }
-    }
-
     /// Convenience-method for [`power`] using [`LinearOls`].
     #[cfg(feature = "ols")]
     pub fn power_ols(predictors: &mut [f64], outcomes: &mut [f64]) -> PowerCoefficients {
@@ -649,49 +702,6 @@ pub mod derived {
             e,
             predictor_additive,
             outcome_additive,
-        }
-    }
-
-    #[derive(Debug)]
-    pub struct ExponentialCoefficients {
-        /// Constant
-        pub k: f64,
-        /// base
-        pub b: f64,
-        /// If the predictors needs to have an offset applied to remove values under 1.
-        pub predictor_additive: Option<f64>,
-        /// If the outcomes needs to have an offset applied to remove values under 1.
-        pub outcome_additive: Option<f64>,
-    }
-    impl Predictive for ExponentialCoefficients {
-        fn predict_outcome(&self, predictor: f64) -> f64 {
-            self.k
-                * self
-                    .b
-                    .powf(predictor + self.predictor_additive.unwrap_or(0.0))
-                - self.outcome_additive.unwrap_or(0.0)
-        }
-    }
-    impl Display for ExponentialCoefficients {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            let p = f.precision().unwrap_or(5);
-            write!(
-                f,
-                "{:.3$} * {:.3$}^{x}{}",
-                self.k,
-                self.b,
-                if let Some(out) = self.outcome_additive {
-                    format!(" - {:.1$}", out, p)
-                } else {
-                    String::new()
-                },
-                p,
-                x = if let Some(pred) = self.predictor_additive {
-                    format!("(x + {:.1$})", pred, p)
-                } else {
-                    "x".to_string()
-                },
-            )
         }
     }
 
@@ -1605,6 +1615,7 @@ pub mod theil_sen {
     use crate::{percentile, F64OrdHash};
     use std::fmt::Debug;
 
+    /// A buffer returned by [`PermutationIter`] to avoid allocations.
     pub struct PermutationIterBuffer<T> {
         buf: Vec<(T, T)>,
     }
@@ -1614,6 +1625,7 @@ pub mod theil_sen {
             &self.buf
         }
     }
+    /// An iterator over the permutations.
     #[derive(Debug)]
     pub struct PermutationIter<'a, T> {
         s1: &'a [T],
@@ -2284,6 +2296,7 @@ pub mod spiral {
         0.0 - error
     }
 
+    /// Estimators based on the general spiral method.
     pub mod estimators {
         use super::*;
 
@@ -2360,6 +2373,8 @@ pub mod spiral {
             }
         }
 
+        /// Fit a logistic model with the least sum of errors.
+        #[derive(Debug, Clone, PartialEq)]
         pub struct LogisticSpiralManhattanDistance(pub Options);
         impl LogisticEstimator for LogisticSpiralManhattanDistance {
             fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LogisticCoefficients {
@@ -2410,10 +2425,17 @@ pub mod spiral {
     #[must_use]
     #[derive(Debug, Clone, PartialEq)]
     pub struct Options {
+        /// The initial scale of the spiral.
+        ///
+        /// This gets adjusted when locking on.
         pub exponent_coefficient: f64,
+        /// The "density" of the spiral.
         pub angle_coefficient: f64,
+        /// How many lockons we are allowed to do. This is a max value.
         pub num_lockon: usize,
+        /// The count of samples per each rotation in the spiral.
         pub samples_per_rotation: f64,
+        /// The range of angles to test.
         pub range: Range<f64>,
         /// The turns of the 3d spiral when using [`three_variable_optimization`].
         /// Frequency of turns per sphere. Is unnecessary to turn up when
