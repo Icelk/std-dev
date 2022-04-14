@@ -38,12 +38,15 @@
 use std::fmt::{self, Display};
 use std::ops::Deref;
 
+#[doc(inline)]
+pub use models::*;
+
 pub use derived::{exponential, power, ExponentialCoefficients, PowerCoefficients};
 #[cfg(feature = "ols")]
 pub use derived::{exponential_ols, power_ols};
 #[cfg(feature = "ols")]
 pub use ols::{LinearOls, PolynomialOls};
-pub use spiral::{LinearSpiralManhattanDistance, PolynomialSpiralManhattanDistance};
+pub use spiral::estimators::*;
 pub use theil_sen::{LinearTheilSen, PolynomialTheilSen};
 
 trait Model: Predictive + Display {}
@@ -141,153 +144,211 @@ pub trait Determination: Predictive {
 }
 impl<T: Predictive> Determination for T {}
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LinearCoefficients {
-    /// slope, x coefficient
-    pub k: f64,
-    /// y intersect, additive
-    pub m: f64,
-}
-impl Predictive for LinearCoefficients {
-    fn predict_outcome(&self, predictor: f64) -> f64 {
-        self.k * predictor + self.m
-    }
-}
-impl Display for LinearCoefficients {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let p = f.precision().unwrap_or(5);
-        write!(f, "{:.2$}x + {:.2$}", self.k, self.m, p)
-    }
-}
+pub mod models {
+    use std::f64::consts::E;
 
-/// The length of the inner vector is `degree + 1`.
-///
-/// The inner list is in order of smallest exponent to largest: `[0, 2, 1]` means `y = 1x² + 2x + 0`.
-#[derive(Clone, Debug)]
-pub struct PolynomialCoefficients {
-    coefficients: Vec<f64>,
-}
-impl PolynomialCoefficients {
-    fn slice_mut(&mut self) -> &mut [f64] {
-        &mut self.coefficients
-    }
-}
-impl Deref for PolynomialCoefficients {
-    type Target = [f64];
-    fn deref(&self) -> &Self::Target {
-        &self.coefficients
-    }
-}
-impl Display for PolynomialCoefficients {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut first = true;
-        for (degree, mut coefficient) in self.coefficients.iter().copied().enumerate().rev() {
-            if !first {
-                if coefficient.is_sign_positive() {
-                    write!(f, " + ")?;
-                } else {
-                    write!(f, " - ")?;
-                    coefficient = -coefficient;
-                }
-            }
+    use super::*;
 
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct LinearCoefficients {
+        /// slope, x coefficient
+        pub k: f64,
+        /// y intersect, additive
+        pub m: f64,
+    }
+    impl Predictive for LinearCoefficients {
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            self.k * predictor + self.m
+        }
+    }
+    impl Display for LinearCoefficients {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             let p = f.precision().unwrap_or(5);
+            write!(f, "{:.2$}x + {:.2$}", self.k, self.m, p)
+        }
+    }
 
-            match degree {
-                0 => write!(f, "{coefficient:.*}", p)?,
-                1 => write!(f, "{coefficient:.*}x", p)?,
-                _ => write!(f, "{coefficient:.0$}x^{degree:.0$}", p)?,
+    /// The length of the inner vector is `degree + 1`.
+    ///
+    /// The inner list is in order of smallest exponent to largest: `[0, 2, 1]` means `y = 1x² + 2x + 0`.
+    #[derive(Clone, Debug)]
+    pub struct PolynomialCoefficients {
+        pub(crate) coefficients: Vec<f64>,
+    }
+    impl Deref for PolynomialCoefficients {
+        type Target = [f64];
+        fn deref(&self) -> &Self::Target {
+            &self.coefficients
+        }
+    }
+    impl Display for PolynomialCoefficients {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let mut first = true;
+            for (degree, mut coefficient) in self.coefficients.iter().copied().enumerate().rev() {
+                if !first {
+                    if coefficient.is_sign_positive() {
+                        write!(f, " + ")?;
+                    } else {
+                        write!(f, " - ")?;
+                        coefficient = -coefficient;
+                    }
+                }
+
+                let p = f.precision().unwrap_or(5);
+
+                match degree {
+                    0 => write!(f, "{coefficient:.*}", p)?,
+                    1 => write!(f, "{coefficient:.*}x", p)?,
+                    _ => write!(f, "{coefficient:.0$}x^{degree:.0$}", p)?,
+                }
+
+                first = false;
             }
-
-            first = false;
+            Ok(())
         }
-        Ok(())
     }
-}
-impl PolynomialCoefficients {
-    fn naive_predict(&self, predictor: f64) -> f64 {
-        let mut out = 0.0;
-        for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
-            out += predictor.powi(degree as i32) * coefficient;
-        }
-        out
-    }
-}
-impl Predictive for PolynomialCoefficients {
-    #[cfg(feature = "arbitrary-precision")]
-    fn predict_outcome(&self, predictor: f64) -> f64 {
-        if self.coefficients.len() < 10 {
-            self.naive_predict(predictor)
-        } else {
-            use rug::ops::PowAssign;
-            use rug::Assign;
-            use std::ops::MulAssign;
-
-            let precision = (64 + self.len() * 2) as u32;
-            // let precision = arbitrary_linear_algebra::HARDCODED_PRECISION;
-            let mut out = rug::Float::with_val(precision, 0.0f64);
-            let original_predictor = predictor;
-            let mut predictor = rug::Float::with_val(precision, predictor);
+    impl PolynomialCoefficients {
+        #[inline(always)]
+        fn naive_predict(&self, predictor: f64) -> f64 {
+            let mut out = 0.0;
             for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
-                // assign to never create a new value.
-                predictor.pow_assign(degree as u32);
-                predictor.mul_assign(coefficient);
-                out += &predictor;
-                predictor.assign(original_predictor)
+                out += predictor.powi(degree as i32) * coefficient;
             }
-            out.to_f64()
+            out
         }
     }
-    #[cfg(not(feature = "arbitrary-precision"))]
-    fn predict_outcome(&self, predictor: f64) -> f64 {
-        self.naive_predict(predictor)
-    }
-}
-impl From<LinearCoefficients> for PolynomialCoefficients {
-    fn from(coefficients: LinearCoefficients) -> Self {
-        Self {
-            coefficients: vec![coefficients.m, coefficients.k],
-        }
-    }
-}
+    impl Predictive for PolynomialCoefficients {
+        #[cfg(feature = "arbitrary-precision")]
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            if self.coefficients.len() < 10 {
+                self.naive_predict(predictor)
+            } else {
+                use rug::ops::PowAssign;
+                use rug::Assign;
+                use std::ops::MulAssign;
 
-/// Implemented by all methods yielding a linear 2 variable regression (a line).
-pub trait LinearEstimator {
-    /// Model the [`LinearCoefficients`] from `predictors` and `outcomes`.
-    ///
-    /// # Panics
-    ///
-    /// The two slices must have the same length.
-    fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients;
-    /// Put this estimator in a box.
-    /// This is useful for conditionally choosing different estimators.
-    fn boxed(self) -> Box<dyn LinearEstimator>
-    where
-        Self: Sized + 'static,
-    {
-        Box::new(self)
+                let precision = (64 + self.len() * 2) as u32;
+                // let precision = arbitrary_linear_algebra::HARDCODED_PRECISION;
+                let mut out = rug::Float::with_val(precision, 0.0f64);
+                let original_predictor = predictor;
+                let mut predictor = rug::Float::with_val(precision, predictor);
+                for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
+                    // assign to never create a new value.
+                    predictor.pow_assign(degree as u32);
+                    predictor.mul_assign(coefficient);
+                    out += &predictor;
+                    predictor.assign(original_predictor)
+                }
+                out.to_f64()
+            }
+        }
+        #[cfg(not(feature = "arbitrary-precision"))]
+        #[inline(always)]
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            self.naive_predict(predictor)
+        }
     }
-}
-impl<T: LinearEstimator + ?Sized> LinearEstimator for &T {
-    fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
-        (**self).model(predictors, outcomes)
+    impl From<LinearCoefficients> for PolynomialCoefficients {
+        fn from(coefficients: LinearCoefficients) -> Self {
+            Self {
+                coefficients: vec![coefficients.m, coefficients.k],
+            }
+        }
     }
-}
-/// Implemented by all methods yielding a polynomial regression.
-pub trait PolynomialEstimator {
-    /// Model the [`PolynomialCoefficients`] from `predictors` and `outcomes` with `degree`.
-    ///
-    /// # Panics
-    ///
-    /// The two slices must have the same length.
-    fn model(&self, predictors: &[f64], outcomes: &[f64], degree: usize) -> PolynomialCoefficients;
-    /// Put this estimator in a box.
-    /// This is useful for conditionally choosing different estimators.
-    fn boxed(self) -> Box<dyn PolynomialEstimator>
-    where
-        Self: Sized + 'static,
-    {
-        Box::new(self)
+    impl<T: Into<Vec<f64>>> From<T> for PolynomialCoefficients {
+        fn from(t: T) -> Self {
+            Self {
+                coefficients: t.into(),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct LogisticCoefficients {
+        /// The x value of the curve's midpoint
+        pub x0: f64,
+        /// The curve's maximum value
+        pub l: f64,
+        /// The logistic growth rate or steepness of the curve
+        pub k: f64,
+    }
+    impl Predictive for LogisticCoefficients {
+        #[inline(always)]
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            self.l / (1. + E.powf(-self.k * (predictor - self.x0)))
+        }
+    }
+    impl Display for LogisticCoefficients {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let p = f.precision().unwrap_or(5);
+            write!(
+                f,
+                "{:.3$} / (1 + e^(-{:.3$}(x - {:.3$})))",
+                self.l, self.k, self.x0, p
+            )
+        }
+    }
+
+    /// Implemented by all methods yielding a linear 2 variable regression (a line).
+    pub trait LinearEstimator {
+        /// Model the [`LinearCoefficients`] from `predictors` and `outcomes`.
+        ///
+        /// # Panics
+        ///
+        /// The two slices must have the same length.
+        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients;
+        /// Put this estimator in a box.
+        /// This is useful for conditionally choosing different estimators.
+        fn boxed(self) -> Box<dyn LinearEstimator>
+        where
+            Self: Sized + 'static,
+        {
+            Box::new(self)
+        }
+    }
+    impl<T: LinearEstimator + ?Sized> LinearEstimator for &T {
+        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+            (**self).model(predictors, outcomes)
+        }
+    }
+    /// Implemented by all methods yielding a polynomial regression.
+    pub trait PolynomialEstimator {
+        /// Model the [`PolynomialCoefficients`] from `predictors` and `outcomes` with `degree`.
+        ///
+        /// # Panics
+        ///
+        /// The two slices must have the same length.
+        fn model(
+            &self,
+            predictors: &[f64],
+            outcomes: &[f64],
+            degree: usize,
+        ) -> PolynomialCoefficients;
+        /// Put this estimator in a box.
+        /// This is useful for conditionally choosing different estimators.
+        fn boxed(self) -> Box<dyn PolynomialEstimator>
+        where
+            Self: Sized + 'static,
+        {
+            Box::new(self)
+        }
+    }
+    /// Implemented by all methods yielding a logistic regression.
+    pub trait LogisticEstimator {
+        /// Model the [`LogisticCoefficients`] from `predictors` and `outcomes`.
+        ///
+        /// # Panics
+        ///
+        /// The two slices must have the same length.
+        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LogisticCoefficients;
+        /// Put this estimator in a box.
+        /// This is useful for conditionally choosing different estimators.
+        fn boxed(self) -> Box<dyn LogisticEstimator>
+        where
+            Self: Sized + 'static,
+        {
+            Box::new(self)
+        }
     }
 }
 
@@ -2223,51 +2284,98 @@ pub mod spiral {
         0.0 - error
     }
 
-    /// [`LinearEstimator`] for the spiral estimator using the fast and robust
-    /// [`manhattan_distance`] fitness function.
-    /// `O(n)`
-    pub struct LinearSpiralManhattanDistance(pub Options);
-    impl LinearEstimator for LinearSpiralManhattanDistance {
-        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
-            linear(
-                |model| manhattan_distance(&model, predictors, outcomes),
-                self.0.clone(),
-            )
+    pub mod estimators {
+        use super::*;
+
+        struct SecondDegreePolynomial([f64; 3]);
+        impl Predictive for SecondDegreePolynomial {
+            fn predict_outcome(&self, predictor: f64) -> f64 {
+                self.0[0] + self.0[1] * predictor + self.0[2] * predictor * predictor
+            }
         }
-    }
-    /// [`LinearEstimator`] for the spiral estimator using a fitness function and [`Options`]
-    /// provided by you.
-    /// `O(fitness function)`
-    pub struct LinearSpiral<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64>(pub F, pub Options);
-    impl<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64> LinearEstimator for LinearSpiral<F> {
-        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
-            linear(|model| self.0(&model, predictors, outcomes), self.1.clone())
+        #[inline(always)]
+        fn wrap_linear(a: [f64; 2]) -> LinearCoefficients {
+            LinearCoefficients { k: a[1], m: a[0] }
         }
-    }
-    /// [`PolynomialEstimator`] for the spiral estimator using the fast and robust
-    /// [`manhattan_distance`] fitness function.
-    /// `O(n)`
-    ///
-    /// **IMPORTANT**: only supports degrees of 1&2.
-    pub struct PolynomialSpiralManhattanDistance(pub Options);
-    impl PolynomialEstimator for PolynomialSpiralManhattanDistance {
-        fn model(
-            &self,
-            predictors: &[f64],
-            outcomes: &[f64],
-            degree: usize,
-        ) -> PolynomialCoefficients {
-            match degree {
-                1 => linear(
-                    |model| manhattan_distance(&model, predictors, outcomes),
+
+        /// [`LinearEstimator`] for the spiral estimator using the fast and robust
+        /// [`manhattan_distance`] fitness function.
+        /// `O(n)`
+        pub struct LinearSpiralManhattanDistance(pub Options);
+        impl LinearEstimator for LinearSpiralManhattanDistance {
+            fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+                wrap_linear(two_variable_optimization(
+                    #[inline(always)]
+                    |model| manhattan_distance(&wrap_linear(model), predictors, outcomes),
                     self.0.clone(),
-                )
-                .into(),
-                2 => second_degree_polynomial(
-                    |model| manhattan_distance(model, predictors, outcomes),
+                ))
+            }
+        }
+        /// [`LinearEstimator`] for the spiral estimator using a fitness function and [`Options`]
+        /// provided by you.
+        /// `O(fitness function)`
+        pub struct LinearSpiral<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64>(
+            pub F,
+            pub Options,
+        );
+        impl<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64> LinearEstimator for LinearSpiral<F> {
+            fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+                wrap_linear(two_variable_optimization(
+                    #[inline(always)]
+                    |model| self.0(&wrap_linear(model), predictors, outcomes),
+                    self.1.clone(),
+                ))
+            }
+        }
+        /// [`PolynomialEstimator`] for the spiral estimator using the fast and robust
+        /// [`manhattan_distance`] fitness function.
+        /// `O(n)`
+        ///
+        /// **IMPORTANT**: only supports degrees of 1&2.
+        pub struct PolynomialSpiralManhattanDistance(pub Options);
+        impl PolynomialEstimator for PolynomialSpiralManhattanDistance {
+            fn model(
+                &self,
+                predictors: &[f64],
+                outcomes: &[f64],
+                degree: usize,
+            ) -> PolynomialCoefficients {
+                match degree {
+                    1 => wrap_linear(two_variable_optimization(
+                        #[inline(always)]
+                        |model| manhattan_distance(&wrap_linear(model), predictors, outcomes),
+                        self.0.clone(),
+                    ))
+                    .into(),
+                    2 => three_variable_optimization(
+                        #[inline(always)]
+                        |model| {
+                            manhattan_distance(&SecondDegreePolynomial(model), predictors, outcomes)
+                        },
+                        self.0.clone(),
+                    )
+                    .into(),
+                    _ => panic!("unsupported degree for polynomial spiral. Supports 1,2."),
+                }
+            }
+        }
+
+        pub struct LogisticSpiralManhattanDistance(pub Options);
+        impl LogisticEstimator for LogisticSpiralManhattanDistance {
+            fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LogisticCoefficients {
+                #[inline(always)]
+                fn wrap(a: [f64; 3]) -> LogisticCoefficients {
+                    LogisticCoefficients {
+                        x0: a[0],
+                        l: a[1],
+                        k: a[2],
+                    }
+                }
+                wrap(three_variable_optimization(
+                    #[inline(always)]
+                    |model| manhattan_distance(&wrap(model), predictors, outcomes),
                     self.0.clone(),
-                ),
-                _ => panic!("unsupported degree for polynomial spiral. Supports 1,2."),
+                ))
             }
         }
     }
