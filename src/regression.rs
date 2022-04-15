@@ -809,6 +809,7 @@ pub mod derived {
 /// Many functions are not implemented. PRs are welcome.
 #[cfg(feature = "arbitrary-precision")]
 pub mod arbitrary_linear_algebra {
+    use std::cell::RefCell;
     use std::fmt::{self, Display};
     use std::ops::{
         Add, AddAssign, Deref, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
@@ -817,7 +818,22 @@ pub mod arbitrary_linear_algebra {
     use nalgebra::{ComplexField, RealField};
     use rug::Assign;
 
-    pub const HARDCODED_PRECISION: u32 = 256;
+    thread_local! {
+        /// The default precision.
+        ///
+        /// This is thread-local.
+        pub static DEFAULT_PRECISION: RefCell<u32> = RefCell::new(256);
+    }
+    /// Set the default precision **for this thread**.
+    pub fn set_default_precision(new: u32) {
+        DEFAULT_PRECISION.with(|v| *v.borrow_mut() = new);
+    }
+    /// Get the default precision.
+    /// Can be set using [`set_default_precision`].
+    pub fn default_precision() -> u32 {
+        DEFAULT_PRECISION.with(|v| *v.borrow())
+    }
+    /// A wrapper around [`rug::Float`] to implement traits for.
     #[derive(Debug, Clone, PartialEq, PartialOrd)]
     pub struct FloatWrapper(pub rug::Float);
     impl From<rug::Float> for FloatWrapper {
@@ -841,7 +857,7 @@ pub mod arbitrary_linear_algebra {
             self.0.to_f64()
         }
         fn from_subset(element: &f64) -> Self {
-            rug::Float::with_val(HARDCODED_PRECISION, element).into()
+            rug::Float::with_val(default_precision(), element).into()
         }
     }
     impl simba::scalar::SubsetOf<Self> for FloatWrapper {
@@ -859,10 +875,10 @@ pub mod arbitrary_linear_algebra {
     }
     impl num_traits::cast::FromPrimitive for FloatWrapper {
         fn from_i64(n: i64) -> Option<Self> {
-            Some(rug::Float::with_val(HARDCODED_PRECISION, n).into())
+            Some(rug::Float::with_val(default_precision(), n).into())
         }
         fn from_u64(n: u64) -> Option<Self> {
-            Some(rug::Float::with_val(HARDCODED_PRECISION, n).into())
+            Some(rug::Float::with_val(default_precision(), n).into())
         }
     }
     impl Display for FloatWrapper {
@@ -981,7 +997,7 @@ pub mod arbitrary_linear_algebra {
     }
     impl num_traits::Zero for FloatWrapper {
         fn zero() -> Self {
-            Self(rug::Float::with_val(HARDCODED_PRECISION, 0.0))
+            Self(rug::Float::with_val(default_precision(), 0.0))
         }
         fn is_zero(&self) -> bool {
             self.0 == 0.0
@@ -989,14 +1005,14 @@ pub mod arbitrary_linear_algebra {
     }
     impl num_traits::One for FloatWrapper {
         fn one() -> Self {
-            Self(rug::Float::with_val(HARDCODED_PRECISION, 1.0))
+            Self(rug::Float::with_val(default_precision(), 1.0))
         }
     }
     impl num_traits::Num for FloatWrapper {
         type FromStrRadixErr = rug::float::ParseFloatError;
         fn from_str_radix(s: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
             rug::Float::parse_radix(s, radix as i32)
-                .map(|f| Self(rug::Float::with_val(HARDCODED_PRECISION, f)))
+                .map(|f| Self(rug::Float::with_val(default_precision(), f)))
         }
     }
     impl num_traits::Signed for FloatWrapper {
@@ -1023,7 +1039,7 @@ pub mod arbitrary_linear_algebra {
     impl approx::AbsDiffEq for FloatWrapper {
         type Epsilon = Self;
         fn default_epsilon() -> Self::Epsilon {
-            rug::Float::with_val(HARDCODED_PRECISION, f64::EPSILON).into()
+            rug::Float::with_val(default_precision(), f64::EPSILON).into()
         }
         fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
             if self.0 == other.0 {
@@ -1041,7 +1057,7 @@ pub mod arbitrary_linear_algebra {
     }
     impl approx::RelativeEq for FloatWrapper {
         fn default_max_relative() -> Self::Epsilon {
-            rug::Float::with_val(HARDCODED_PRECISION, f64::EPSILON).into()
+            rug::Float::with_val(default_precision(), f64::EPSILON).into()
         }
         fn relative_eq(
             &self,
@@ -1565,8 +1581,9 @@ pub mod ols {
         ) -> PolynomialCoefficients {
             use rug::ops::PowAssign;
             let precision = (64 + degree * 2) as u32;
-            // let precision = arbitrary_linear_algebra::HARDCODED_PRECISION;
-            // let zero_limit = rug::Float::with_val(arbitrary_linear_algebra::HARDCODED_PRECISION, 1e-17f64).into();
+            let old = arbitrary_linear_algebra::default_precision();
+            arbitrary_linear_algebra::set_default_precision(precision);
+
             let predictors = predictors.map(|x| {
                 arbitrary_linear_algebra::FloatWrapper::from(rug::Float::with_val(precision, x))
             });
@@ -1596,6 +1613,8 @@ pub mod ols {
             let t = design.transpose();
             let outcomes = nalgebra::DMatrix::from_iterator(len, 1, outcomes);
             let result = ((&t * &design).try_inverse().unwrap() * &t) * outcomes;
+
+            arbitrary_linear_algebra::set_default_precision(old);
 
             PolynomialCoefficients {
                 coefficients: result.iter().map(|f| f.0.to_f64()).collect(),
