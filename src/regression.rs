@@ -47,7 +47,7 @@ pub use models::*;
 #[cfg(feature = "ols")]
 pub use derived::{exponential_ols, power_ols};
 #[cfg(feature = "ols")]
-pub use ols::{LinearOls, PolynomialOls};
+pub use ols::OlsEstimator;
 pub use spiral::estimators::*;
 pub use theil_sen::{LinearTheilSen, PolynomialTheilSen};
 
@@ -421,10 +421,10 @@ pub mod models {
         /// # Panics
         ///
         /// The two slices must have the same length.
-        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients;
+        fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients;
         /// Put this estimator in a box.
         /// This is useful for conditionally choosing different estimators.
-        fn boxed(self) -> Box<dyn LinearEstimator>
+        fn boxed_linear(self) -> Box<dyn LinearEstimator>
         where
             Self: Sized + 'static,
         {
@@ -432,8 +432,8 @@ pub mod models {
         }
     }
     impl<T: LinearEstimator + ?Sized> LinearEstimator for &T {
-        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
-            (**self).model(predictors, outcomes)
+        fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+            (**self).model_linear(predictors, outcomes)
         }
     }
     /// Implemented by all methods yielding a polynomial regression.
@@ -443,7 +443,7 @@ pub mod models {
         /// # Panics
         ///
         /// The two slices must have the same length.
-        fn model(
+        fn model_polynomial(
             &self,
             predictors: &[f64],
             outcomes: &[f64],
@@ -451,7 +451,7 @@ pub mod models {
         ) -> PolynomialCoefficients;
         /// Put this estimator in a box.
         /// This is useful for conditionally choosing different estimators.
-        fn boxed(self) -> Box<dyn PolynomialEstimator>
+        fn boxed_polynomial(self) -> Box<dyn PolynomialEstimator>
         where
             Self: Sized + 'static,
         {
@@ -465,10 +465,10 @@ pub mod models {
         /// # Panics
         ///
         /// The two slices must have the same length.
-        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> PowerCoefficients;
+        fn model_power(&self, predictors: &[f64], outcomes: &[f64]) -> PowerCoefficients;
         /// Put this estimator in a box.
         /// This is useful for conditionally choosing different estimators.
-        fn boxed(self) -> Box<dyn PowerEstimator>
+        fn boxed_power(self) -> Box<dyn PowerEstimator>
         where
             Self: Sized + 'static,
         {
@@ -482,10 +482,14 @@ pub mod models {
         /// # Panics
         ///
         /// The two slices must have the same length.
-        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> ExponentialCoefficients;
+        fn model_exponential(
+            &self,
+            predictors: &[f64],
+            outcomes: &[f64],
+        ) -> ExponentialCoefficients;
         /// Put this estimator in a box.
         /// This is useful for conditionally choosing different estimators.
-        fn boxed(self) -> Box<dyn ExponentialEstimator>
+        fn boxed_exponential(self) -> Box<dyn ExponentialEstimator>
         where
             Self: Sized + 'static,
         {
@@ -499,10 +503,10 @@ pub mod models {
         /// # Panics
         ///
         /// The two slices must have the same length.
-        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LogisticCoefficients;
+        fn model_logistic(&self, predictors: &[f64], outcomes: &[f64]) -> LogisticCoefficients;
         /// Put this estimator in a box.
         /// This is useful for conditionally choosing different estimators.
-        fn boxed(self) -> Box<dyn LogisticEstimator>
+        fn boxed_logistic(self) -> Box<dyn LogisticEstimator>
         where
             Self: Sized + 'static,
         {
@@ -664,7 +668,7 @@ pub fn best_fit(
         update_best!(degree_3, e, e * THIRD_DEGREE_DISADVANTAGE);
     }
 
-    let linear = linear_estimator.model(predictors, outcomes);
+    let linear = linear_estimator.model_linear(predictors, outcomes);
     update_best!(linear, e, e + LINEAR_BUMP);
     // UNWRAP: We just set it, at least there's a linear.
     best.unwrap().0
@@ -672,7 +676,7 @@ pub fn best_fit(
 /// Convenience function for [`best_fit`] using [`LinearOls`].
 #[cfg(feature = "ols")]
 pub fn best_fit_ols(predictors: &[f64], outcomes: &[f64]) -> DynModel {
-    best_fit(predictors, outcomes, &LinearOls)
+    best_fit(predictors, outcomes, &OlsEstimator)
 }
 
 /// Estimators derived from others, usual [`LinearEstimator`].
@@ -692,7 +696,7 @@ pub mod derived {
     /// Convenience-method for [`power`] using [`LinearOls`].
     #[cfg(feature = "ols")]
     pub fn power_ols(predictors: &mut [f64], outcomes: &mut [f64]) -> PowerCoefficients {
-        power(predictors, outcomes, &LinearOls)
+        power(predictors, outcomes, &OlsEstimator)
     }
     /// Fits a curve with the equation `y = a * x^b` (optionally with an additional subtractive term if
     /// any outcome is < 1 and an additive to the `x` if any predictor is < 1).
@@ -760,7 +764,7 @@ pub mod derived {
             .iter_mut()
             .for_each(|y| *y = (*y + outcome_additive.unwrap_or(0.0)).log2());
 
-        let coefficients = estimator.model(predictors, outcomes);
+        let coefficients = estimator.model_linear(predictors, outcomes);
         let k = 2.0_f64.powf(coefficients.m);
         let e = coefficients.k;
         PowerCoefficients {
@@ -777,7 +781,7 @@ pub mod derived {
         predictors: &mut [f64],
         outcomes: &mut [f64],
     ) -> ExponentialCoefficients {
-        exponential(predictors, outcomes, &LinearOls)
+        exponential(predictors, outcomes, &OlsEstimator)
     }
     /// Fits a curve with the equation `y = a * b^x` (optionally with an additional subtractive term if
     /// any outcome is < 1 and an additive to the `x` if any predictor is < 1).
@@ -845,7 +849,7 @@ pub mod derived {
             .iter_mut()
             .for_each(|y| *y = (*y + outcome_additive.unwrap_or(0.0)).log2());
 
-        let coefficients = estimator.model(predictors, outcomes);
+        let coefficients = estimator.model_linear(predictors, outcomes);
         let k = 2.0_f64.powf(coefficients.m);
         let b = 2.0_f64.powf(coefficients.k);
         ExponentialCoefficients {
@@ -1914,7 +1918,7 @@ pub mod theil_sen {
     pub struct LinearTheilSen;
     impl LinearEstimator for LinearTheilSen {
         #[inline]
-        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+        fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
             slow_linear(predictors, outcomes)
         }
     }
@@ -1924,7 +1928,7 @@ pub mod theil_sen {
     pub struct PolynomialTheilSen;
     impl PolynomialEstimator for PolynomialTheilSen {
         #[inline]
-        fn model(
+        fn model_polynomial(
             &self,
             predictors: &[f64],
             outcomes: &[f64],

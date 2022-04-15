@@ -409,14 +409,13 @@ fn main() {
 
                 let linear_estimator = {
                     if config.is_present("theil_sen") {
-                        std_dev::regression::LinearTheilSen.boxed()
+                        std_dev::regression::LinearTheilSen.boxed_linear()
                     } else if config.is_present("spiral") {
-                        std_dev::regression::LinearSpiralManhattanDistance(spiral_options.clone())
-                            .boxed()
+                        spiral_options.clone().boxed_linear()
                     } else {
                         #[cfg(feature = "ols")]
                         {
-                            std_dev::regression::LinearOls.boxed()
+                            std_dev::regression::OlsEstimator.boxed_linear()
                         }
                         #[cfg(not(feature = "ols"))]
                         {
@@ -442,12 +441,7 @@ fn main() {
 
                     DynModel::new(coefficients)
                 } else if config.is_present("logistic") {
-                    DynModel::new(
-                        std_dev::regression::LogisticSpiralManhattanDistance(
-                            spiral_options.clone(),
-                        )
-                        .model(&x, &y),
-                    )
+                    DynModel::new(spiral_options.model_logistic(&x, &y))
                 } else if config.is_present("linear") || config.is_present("degree") {
                     let degree = {
                         if let Ok(degree) = config.value_of_t("degree") {
@@ -462,23 +456,20 @@ fn main() {
                     }
 
                     if degree == 1 {
-                        linear_estimator.model(&x, &y).boxed()
+                        linear_estimator.model_linear(&x, &y).boxed()
                     } else {
                         let estimator = {
                             if config.is_present("theil_sen") {
-                                std_dev::regression::PolynomialTheilSen.boxed()
+                                std_dev::regression::PolynomialTheilSen.boxed_polynomial()
                             } else if config.is_present("spiral") {
                                 if !(1..=2).contains(&degree) {
                                     spiral_polynomial_degree_error.exit();
                                 }
-                                std_dev::regression::PolynomialSpiralManhattanDistance(
-                                    spiral_options,
-                                )
-                                .boxed()
+                                spiral_options.clone().boxed_polynomial()
                             } else {
                                 #[cfg(feature = "ols")]
                                 {
-                                    std_dev::regression::PolynomialOls.boxed()
+                                    std_dev::regression::OlsEstimator.boxed_polynomial()
                                 }
                                 #[cfg(not(feature = "ols"))]
                                 {
@@ -488,7 +479,7 @@ fn main() {
                             }
                         };
 
-                        estimator.model(&x, &y, degree).boxed()
+                        estimator.model_polynomial(&x, &y, degree).boxed()
                     }
                 } else {
                     std_dev::regression::best_fit(&x, &y, &&*linear_estimator)
