@@ -8,11 +8,9 @@ use std::io::{stdin, BufRead};
 use std::process::exit;
 use std::str::FromStr;
 use std::time::Instant;
-use std_dev::regression::LogisticEstimator;
 #[cfg(feature = "regression")]
-use std_dev::regression::{
-    Determination, DynModel, LinearEstimator, PolynomialEstimator, Predictive,
-};
+use std_dev::regression::{Determination, LinearEstimator, PolynomialEstimator, Predictive};
+use std_dev::regression::{ExponentialEstimator, LogisticEstimator, PowerEstimator};
 
 pub use std_dev;
 
@@ -427,21 +425,26 @@ fn main() {
 
                 let now = Instant::now();
 
-                let model: DynModel = if config.is_present("power") {
-                    let coefficients =
-                        std_dev::regression::derived::power(&mut x, &mut y, &&*linear_estimator);
-
-                    DynModel::new(coefficients)
+                let model = if config.is_present("power") {
+                    if config.is_present("spiral") {
+                        spiral_options.model_power(&x, &y).boxed()
+                    } else {
+                        std_dev::regression::derived::power(&mut x, &mut y, &&*linear_estimator)
+                            .boxed()
+                    }
                 } else if config.is_present("exponential") {
-                    let coefficients = std_dev::regression::derived::exponential(
-                        &mut x,
-                        &mut y,
-                        &&*linear_estimator,
-                    );
-
-                    DynModel::new(coefficients)
+                    if config.is_present("spiral") {
+                        spiral_options.model_exponential(&x, &y).boxed()
+                    } else {
+                        std_dev::regression::derived::exponential(
+                            &mut x,
+                            &mut y,
+                            &&*linear_estimator,
+                        )
+                        .boxed()
+                    }
                 } else if config.is_present("logistic") {
-                    DynModel::new(spiral_options.model_logistic(&x, &y))
+                    spiral_options.model_logistic(&x, &y).boxed()
                 } else if config.is_present("linear") || config.is_present("degree") {
                     let degree = {
                         if let Ok(degree) = config.value_of_t("degree") {
