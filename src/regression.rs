@@ -681,6 +681,9 @@ pub fn best_fit_ols(predictors: &[f64], outcomes: &[f64]) -> DynModel {
 
 /// Estimators derived from others, usual [`LinearEstimator`].
 ///
+/// These do not (for now) implement [`PowerEstimator`] nor [`ExponentialEstimator`]
+/// because of the requirement of mutable slices instead of immutable ones.
+///
 /// See the docs on the items for more info about how they're created.
 pub mod derived {
     use super::*;
@@ -1441,7 +1444,8 @@ pub mod ols {
         design: DMatrix<f64>,
         transposed: DMatrix<f64>,
         outcomes: DMatrix<f64>,
-        intermediary: DMatrix<f64>,
+        intermediary1: DMatrix<f64>,
+        intermediary2: DMatrix<f64>,
         result: DMatrix<f64>,
 
         len: usize,
@@ -1453,7 +1457,8 @@ pub mod ols {
                 design: DMatrix::zeros(0, 0),
                 transposed: DMatrix::zeros(0, 0),
                 outcomes: DMatrix::zeros(0, 0),
-                intermediary: DMatrix::zeros(0, 0),
+                intermediary1: DMatrix::zeros(0, 0),
+                intermediary2: DMatrix::zeros(0, 0),
                 result: DMatrix::zeros(0, 0),
 
                 len: 0,
@@ -1471,7 +1476,8 @@ pub mod ols {
             self.design.resize_mut(rows, columns, 0.);
             self.transposed.resize_mut(columns, rows, 0.);
             self.outcomes.resize_mut(rows, 1, 0.);
-            self.intermediary.resize_mut(columns, columns, 0.);
+            self.intermediary1.resize_mut(columns, columns, 0.);
+            self.intermediary2.resize_mut(rows, columns, 0.);
             self.result.resize_mut(columns, 1, 0.);
             self.len = len;
             self.degree = degree;
@@ -1581,7 +1587,8 @@ pub mod ols {
                     design,
                     transposed,
                     outcomes: outcomes_matrix,
-                    intermediary,
+                    intermediary1,
+                    intermediary2,
                     result,
                     ..
                 } = &mut *runtime;
@@ -1614,14 +1621,15 @@ pub mod ols {
                     }
                 }
 
-                transposed.mul_to(design, intermediary);
-                if !intermediary.try_inverse_mut() {
-                    let im = std::mem::replace(intermediary, DMatrix::zeros(0, 0));
+                transposed.mul_to(design, intermediary1);
+
+                if !intermediary1.try_inverse_mut() {
+                    let im = std::mem::replace(intermediary1, DMatrix::zeros(0, 0));
                     let pseudo_inverse = im.pseudo_inverse(1e-8).unwrap();
-                    *intermediary = pseudo_inverse;
+                    *intermediary1 = pseudo_inverse;
                 }
-                *intermediary *= &*transposed;
-                intermediary.mul_to(outcomes_matrix, result);
+                *intermediary2 = &*intermediary1 * &*transposed;
+                intermediary2.mul_to(outcomes_matrix, result);
 
                 PolynomialCoefficients {
                     coefficients: runtime.result.iter().copied().collect(),
