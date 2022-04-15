@@ -458,6 +458,40 @@ pub mod models {
             Box::new(self)
         }
     }
+    /// Implemented by all methods yielding an power regression.
+    pub trait PowerEstimator {
+        /// Model the [`ExponentialCoefficients`] from `predictors` and `outcomes`.
+        ///
+        /// # Panics
+        ///
+        /// The two slices must have the same length.
+        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> PowerCoefficients;
+        /// Put this estimator in a box.
+        /// This is useful for conditionally choosing different estimators.
+        fn boxed(self) -> Box<dyn PowerEstimator>
+        where
+            Self: Sized + 'static,
+        {
+            Box::new(self)
+        }
+    }
+    /// Implemented by all methods yielding an exponential regression.
+    pub trait ExponentialEstimator {
+        /// Model the [`ExponentialCoefficients`] from `predictors` and `outcomes`.
+        ///
+        /// # Panics
+        ///
+        /// The two slices must have the same length.
+        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> ExponentialCoefficients;
+        /// Put this estimator in a box.
+        /// This is useful for conditionally choosing different estimators.
+        fn boxed(self) -> Box<dyn ExponentialEstimator>
+        where
+            Self: Sized + 'static,
+        {
+            Box::new(self)
+        }
+    }
     /// Implemented by all methods yielding a logistic regression.
     pub trait LogisticEstimator {
         /// Model the [`LogisticCoefficients`] from `predictors` and `outcomes`.
@@ -2360,6 +2394,24 @@ pub mod spiral {
         fn wrap_linear(a: [f64; 2]) -> LinearCoefficients {
             LinearCoefficients { k: a[1], m: a[0] }
         }
+        #[inline(always)]
+        fn wrap_power(a: [f64; 2]) -> PowerCoefficients {
+            PowerCoefficients {
+                e: a[1],
+                k: a[0],
+                predictor_additive: 0.,
+                outcome_additive:0.,
+            }
+        }
+        #[inline(always)]
+        fn wrap_exponential(a: [f64; 2]) -> ExponentialCoefficients {
+            ExponentialCoefficients {
+                b: a[1],
+                k: a[0],
+                predictor_additive: 0.,
+                outcome_additive:0.,
+            }
+        }
 
         /// [`LinearEstimator`] for the spiral estimator using the fast and robust
         /// [`manhattan_distance`] fitness function.
@@ -2420,6 +2472,32 @@ pub mod spiral {
                     .into(),
                     _ => panic!("unsupported degree for polynomial spiral. Supports 1,2."),
                 }
+            }
+        }
+        /// [`PowerEstimator`] for the spiral estimator using the fast and robust
+        /// [`manhattan_distance`] fitness function.
+        /// `O(n)`
+        pub struct PowerSpiralManhattanDistance(pub Options);
+        impl PowerEstimator for PowerSpiralManhattanDistance {
+            fn model(&self, predictors: &[f64], outcomes: &[f64]) -> PowerCoefficients {
+                wrap_power(two_variable_optimization(
+                    #[inline(always)]
+                    |model| manhattan_distance(&wrap_power(model), predictors, outcomes),
+                    self.0.clone(),
+                ))
+            }
+        }
+        /// [`ExponentialEstimator`] for the spiral estimator using the fast and robust
+        /// [`manhattan_distance`] fitness function.
+        /// `O(n)`
+        pub struct ExponentialSpiralManhattanDistance(pub Options);
+        impl ExponentialEstimator for ExponentialSpiralManhattanDistance {
+            fn model(&self, predictors: &[f64], outcomes: &[f64]) -> ExponentialCoefficients {
+                wrap_exponential(two_variable_optimization(
+                    #[inline(always)]
+                    |model| manhattan_distance(&wrap_exponential(model), predictors, outcomes),
+                    self.0.clone(),
+                ))
             }
         }
 
