@@ -1479,10 +1479,11 @@ pub mod ols {
     }
     thread_local! {static RUNTIME: RefCell<RuntimeMatrices> = RefCell::new(RuntimeMatrices::new());}
 
-    /// `O(n)`
-    pub struct LinearOls;
-    impl LinearEstimator for LinearOls {
-        fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+    /// Linear: `O(n)`
+    /// Polynomial: `O(n*degree)`, which when using a set `degree` becomes `O(n)`
+    pub struct OlsEstimator;
+    impl LinearEstimator for OlsEstimator {
+        fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
             let coefficients = polynomial(
                 predictors.iter().copied(),
                 outcomes.iter().copied(),
@@ -1495,10 +1496,8 @@ pub mod ols {
             }
         }
     }
-    /// `O(n*degree)`, which when using a set `degree` becomes `O(n)`
-    pub struct PolynomialOls;
-    impl PolynomialEstimator for PolynomialOls {
-        fn model(
+    impl PolynomialEstimator for OlsEstimator {
+        fn model_polynomial(
             &self,
             predictors: &[f64],
             outcomes: &[f64],
@@ -2301,6 +2300,8 @@ pub mod theil_sen {
 ///
 /// > This is a brainchild of this library's lead developer [Icelk](mailto:Icelk<main@icelk.dev>).
 ///
+/// The [`spiral::Options`] implement most of the [estimators](models).
+///
 /// # Advantages
 ///
 /// You supply a `fitness_function` to all functions which tells the algorithm which lines are
@@ -2310,7 +2311,7 @@ pub mod theil_sen {
 ///
 /// # Caveats
 ///
-/// When using [`PolynomialSpiralManhattanDistance`] it only supports degree 1&2.
+/// The polynomial regression implementation only allows for degrees 1 & 2.
 /// See [details](#details) for more info on this.
 ///
 /// The sampling technique means this might miss the right point to close in on. Therefore, I
@@ -2319,8 +2320,8 @@ pub mod theil_sen {
 /// ## Robustness
 ///
 /// Since this uses a fitness function, the robustness is determined by that. Using the "default"
-/// [`spiral::manhattan_distance`] (e.g. [`LinearSpiralManhattanDistance`],
-/// [`PolynomialSpiralManhattanDistance`]) gives good results.
+/// [`spiral::manhattan_distance`] gives good results. This is what the implementations for
+/// [`spiral::Options`] does.
 ///
 /// Since this tests a wide range of possibilities before deciding on one, it's very likely we
 /// don't get trapped in a local maxima.
@@ -2388,48 +2389,35 @@ pub mod spiral {
     pub mod estimators {
         use super::*;
 
-        struct SecondDegreePolynomial([f64; 3]);
+        pub(super) struct SecondDegreePolynomial(pub(super) [f64; 3]);
         impl Predictive for SecondDegreePolynomial {
             fn predict_outcome(&self, predictor: f64) -> f64 {
                 self.0[0] + self.0[1] * predictor + self.0[2] * predictor * predictor
             }
         }
         #[inline(always)]
-        fn wrap_linear(a: [f64; 2]) -> LinearCoefficients {
+        pub(super) fn wrap_linear(a: [f64; 2]) -> LinearCoefficients {
             LinearCoefficients { k: a[1], m: a[0] }
         }
         #[inline(always)]
-        fn wrap_power(a: [f64; 2]) -> PowerCoefficients {
+        pub(super) fn wrap_power(a: [f64; 2]) -> PowerCoefficients {
             PowerCoefficients {
                 e: a[1],
                 k: a[0],
                 predictor_additive: 0.,
-                outcome_additive:0.,
+                outcome_additive: 0.,
             }
         }
         #[inline(always)]
-        fn wrap_exponential(a: [f64; 2]) -> ExponentialCoefficients {
+        pub(super) fn wrap_exponential(a: [f64; 2]) -> ExponentialCoefficients {
             ExponentialCoefficients {
                 b: a[1],
                 k: a[0],
                 predictor_additive: 0.,
-                outcome_additive:0.,
+                outcome_additive: 0.,
             }
         }
 
-        /// [`LinearEstimator`] for the spiral estimator using the fast and robust
-        /// [`manhattan_distance`] fitness function.
-        /// `O(n)`
-        pub struct LinearSpiralManhattanDistance(pub Options);
-        impl LinearEstimator for LinearSpiralManhattanDistance {
-            fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
-                wrap_linear(two_variable_optimization(
-                    #[inline(always)]
-                    |model| manhattan_distance(&wrap_linear(model), predictors, outcomes),
-                    self.0.clone(),
-                ))
-            }
-        }
         /// [`LinearEstimator`] for the spiral estimator using a fitness function and [`Options`]
         /// provided by you.
         /// `O(fitness function)`
@@ -2438,7 +2426,7 @@ pub mod spiral {
             pub Options,
         );
         impl<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64> LinearEstimator for LinearSpiral<F> {
-            fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+            fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
                 wrap_linear(two_variable_optimization(
                     #[inline(always)]
                     |model| self.0(&wrap_linear(model), predictors, outcomes),
@@ -2446,88 +2434,16 @@ pub mod spiral {
                 ))
             }
         }
-        /// [`PolynomialEstimator`] for the spiral estimator using the fast and robust
-        /// [`manhattan_distance`] fitness function.
-        /// `O(n)`
-        ///
-        /// **IMPORTANT**: only supports degrees of 1&2.
-        pub struct PolynomialSpiralManhattanDistance(pub Options);
-        impl PolynomialEstimator for PolynomialSpiralManhattanDistance {
-            fn model(
-                &self,
-                predictors: &[f64],
-                outcomes: &[f64],
-                degree: usize,
-            ) -> PolynomialCoefficients {
-                match degree {
-                    1 => wrap_linear(two_variable_optimization(
-                        #[inline(always)]
-                        |model| manhattan_distance(&wrap_linear(model), predictors, outcomes),
-                        self.0.clone(),
-                    ))
-                    .into(),
-                    2 => three_variable_optimization(
-                        #[inline(always)]
-                        |model| {
-                            manhattan_distance(&SecondDegreePolynomial(model), predictors, outcomes)
-                        },
-                        self.0.clone(),
-                    )
-                    .into(),
-                    _ => panic!("unsupported degree for polynomial spiral. Supports 1,2."),
-                }
-            }
-        }
-        /// [`PowerEstimator`] for the spiral estimator using the fast and robust
-        /// [`manhattan_distance`] fitness function.
-        /// `O(n)`
-        pub struct PowerSpiralManhattanDistance(pub Options);
-        impl PowerEstimator for PowerSpiralManhattanDistance {
-            fn model(&self, predictors: &[f64], outcomes: &[f64]) -> PowerCoefficients {
-                wrap_power(two_variable_optimization(
-                    #[inline(always)]
-                    |model| manhattan_distance(&wrap_power(model), predictors, outcomes),
-                    self.0.clone(),
-                ))
-            }
-        }
-        /// [`ExponentialEstimator`] for the spiral estimator using the fast and robust
-        /// [`manhattan_distance`] fitness function.
-        /// `O(n)`
-        pub struct ExponentialSpiralManhattanDistance(pub Options);
-        impl ExponentialEstimator for ExponentialSpiralManhattanDistance {
-            fn model(&self, predictors: &[f64], outcomes: &[f64]) -> ExponentialCoefficients {
-                wrap_exponential(two_variable_optimization(
-                    #[inline(always)]
-                    |model| manhattan_distance(&wrap_exponential(model), predictors, outcomes),
-                    self.0.clone(),
-                ))
-            }
-        }
-
-        /// Fit a logistic model with the least sum of errors.
-        #[derive(Debug, Clone, PartialEq)]
-        pub struct LogisticSpiralManhattanDistance(pub Options);
-        impl LogisticEstimator for LogisticSpiralManhattanDistance {
-            fn model(&self, predictors: &[f64], outcomes: &[f64]) -> LogisticCoefficients {
-                #[inline(always)]
-                fn wrap(a: [f64; 3]) -> LogisticCoefficients {
-                    LogisticCoefficients {
-                        x0: a[0],
-                        l: a[1],
-                        k: a[2],
-                    }
-                }
-                wrap(three_variable_optimization(
-                    #[inline(always)]
-                    |model| manhattan_distance(&wrap(model), predictors, outcomes),
-                    self.0.clone(),
-                ))
-            }
-        }
     }
 
     /// Options for the spiral.
+    ///
+    /// This also implements most [estimator](models) traits.
+    /// These all use the [`manhattan_distance`] as their fitness function.
+    /// The estimators have `O(n)` runtime performance and `O(1)` size performance.
+    /// See the [`estimators`] module for more advanced usages.
+    ///
+    /// > Polynomial estimator only supports degrees 1 & 2.
     ///
     /// See [module-level documentation](self) for more info about concepts.
     ///
@@ -2625,6 +2541,87 @@ pub mod spiral {
     impl Default for Options {
         fn default() -> Self {
             Self::new()
+        }
+    }
+    impl LinearEstimator for Options {
+        fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+            estimators::wrap_linear(two_variable_optimization(
+                |model| manhattan_distance(&estimators::wrap_linear(model), predictors, outcomes),
+                self.clone(),
+            ))
+        }
+    }
+    impl PolynomialEstimator for Options {
+        fn model_polynomial(
+            &self,
+            predictors: &[f64],
+            outcomes: &[f64],
+            degree: usize,
+        ) -> PolynomialCoefficients {
+            match degree {
+                1 => estimators::wrap_linear(two_variable_optimization(
+                    #[inline(always)]
+                    |model| {
+                        manhattan_distance(&estimators::wrap_linear(model), predictors, outcomes)
+                    },
+                    self.clone(),
+                ))
+                .into(),
+                2 => three_variable_optimization(
+                    #[inline(always)]
+                    |model| {
+                        manhattan_distance(
+                            &estimators::SecondDegreePolynomial(model),
+                            predictors,
+                            outcomes,
+                        )
+                    },
+                    self.clone(),
+                )
+                .into(),
+                _ => panic!("unsupported degree for polynomial spiral. Supports 1,2."),
+            }
+        }
+    }
+    impl PowerEstimator for Options {
+        fn model_power(&self, predictors: &[f64], outcomes: &[f64]) -> PowerCoefficients {
+            estimators::wrap_power(two_variable_optimization(
+                #[inline(always)]
+                |model| manhattan_distance(&estimators::wrap_power(model), predictors, outcomes),
+                self.clone(),
+            ))
+        }
+    }
+    impl ExponentialEstimator for Options {
+        fn model_exponential(
+            &self,
+            predictors: &[f64],
+            outcomes: &[f64],
+        ) -> ExponentialCoefficients {
+            estimators::wrap_exponential(two_variable_optimization(
+                #[inline(always)]
+                |model| {
+                    manhattan_distance(&estimators::wrap_exponential(model), predictors, outcomes)
+                },
+                self.clone(),
+            ))
+        }
+    }
+    impl LogisticEstimator for Options {
+        fn model_logistic(&self, predictors: &[f64], outcomes: &[f64]) -> LogisticCoefficients {
+            #[inline(always)]
+            fn wrap(a: [f64; 3]) -> LogisticCoefficients {
+                LogisticCoefficients {
+                    x0: a[0],
+                    l: a[1],
+                    k: a[2],
+                }
+            }
+            wrap(three_variable_optimization(
+                #[inline(always)]
+                |model| manhattan_distance(&wrap(model), predictors, outcomes),
+                self.clone(),
+            ))
         }
     }
 
