@@ -673,7 +673,7 @@ pub fn best_fit(
     // UNWRAP: We just set it, at least there's a linear.
     best.unwrap().0
 }
-/// Convenience function for [`best_fit`] using [`LinearOls`].
+/// Convenience function for [`best_fit`] using [`OlsEstimator`].
 #[cfg(feature = "ols")]
 pub fn best_fit_ols(predictors: &[f64], outcomes: &[f64]) -> DynModel {
     best_fit(predictors, outcomes, &OlsEstimator)
@@ -696,7 +696,7 @@ pub mod derived {
             .map(|f| f.0)
     }
 
-    /// Convenience-method for [`power`] using [`LinearOls`].
+    /// Convenience-method for [`power`] using [`OlsEstimator`].
     #[cfg(feature = "ols")]
     pub fn power_ols(predictors: &mut [f64], outcomes: &mut [f64]) -> PowerCoefficients {
         power(predictors, outcomes, &OlsEstimator)
@@ -778,7 +778,7 @@ pub mod derived {
         }
     }
 
-    /// Convenience-method for [`exponential`] using [`LinearOls`].
+    /// Convenience-method for [`exponential`] using [`OlsEstimator`].
     #[cfg(feature = "ols")]
     pub fn exponential_ols(
         predictors: &mut [f64],
