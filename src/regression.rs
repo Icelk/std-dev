@@ -282,14 +282,17 @@ pub mod models {
         /// exponent
         pub e: f64,
         /// If the predictors needs to have an offset applied to remove values under 1.
-        pub predictor_additive: Option<f64>,
+        ///
+        /// Defaults to 0.
+        pub predictor_additive: f64,
         /// If the outcomes needs to have an offset applied to remove values under 1.
-        pub outcome_additive: Option<f64>,
+        ///
+        /// Defaults to 0.
+        pub outcome_additive: f64,
     }
     impl Predictive for PowerCoefficients {
         fn predict_outcome(&self, predictor: f64) -> f64 {
-            self.k * (predictor + self.predictor_additive.unwrap_or(0.0)).powf(self.e)
-                - self.outcome_additive.unwrap_or(0.0)
+            self.k * (predictor + self.predictor_additive).powf(self.e) - self.outcome_additive
         }
     }
     impl Display for PowerCoefficients {
@@ -300,14 +303,14 @@ pub mod models {
                 "{:.3$} * {x}^{:.3$}{}",
                 self.k,
                 self.e,
-                if let Some(out) = self.outcome_additive {
-                    format!(" - {:.1$}", out, p)
+                if self.outcome_additive != 0. {
+                    format!(" - {:.1$}", self.outcome_additive, p)
                 } else {
                     String::new()
                 },
                 p,
-                x = if let Some(pred) = self.predictor_additive {
-                    format!("(x + {:.1$})", pred, p)
+                x = if self.predictor_additive != 0. {
+                    format!("(x + {:.1$})", self.predictor_additive, p)
                 } else {
                     "x".to_string()
                 },
@@ -337,17 +340,17 @@ pub mod models {
         /// base
         pub b: f64,
         /// If the predictors needs to have an offset applied to remove values under 1.
-        pub predictor_additive: Option<f64>,
+        ///
+        /// Defaults to 0.
+        pub predictor_additive: f64,
         /// If the outcomes needs to have an offset applied to remove values under 1.
-        pub outcome_additive: Option<f64>,
+        ///
+        /// Defaults to 0.
+        pub outcome_additive: f64,
     }
     impl Predictive for ExponentialCoefficients {
         fn predict_outcome(&self, predictor: f64) -> f64 {
-            self.k
-                * self
-                    .b
-                    .powf(predictor + self.predictor_additive.unwrap_or(0.0))
-                - self.outcome_additive.unwrap_or(0.0)
+            self.k * self.b.powf(predictor + self.predictor_additive) - self.outcome_additive
         }
     }
     impl Display for ExponentialCoefficients {
@@ -358,14 +361,14 @@ pub mod models {
                 "{:.3$} * {:.3$}^{x}{}",
                 self.k,
                 self.b,
-                if let Some(out) = self.outcome_additive {
-                    format!(" - {:.1$}", out, p)
+                if self.outcome_additive != 0. {
+                    format!(" - {:.1$}", self.outcome_additive, p)
                 } else {
                     String::new()
                 },
                 p,
-                x = if let Some(pred) = self.predictor_additive {
-                    format!("(x + {:.1$})", pred, p)
+                x = if self.predictor_additive != 0. {
+                    format!("(x + {:.1$})", self.predictor_additive, p)
                 } else {
                     "x".to_string()
                 },
@@ -729,8 +732,8 @@ pub mod derived {
         PowerCoefficients {
             k,
             e,
-            predictor_additive,
-            outcome_additive,
+            predictor_additive: predictor_additive.unwrap_or(0.),
+            outcome_additive: outcome_additive.unwrap_or(0.),
         }
     }
 
@@ -744,8 +747,6 @@ pub mod derived {
     }
     /// Fits a curve with the equation `y = a * b^x` (optionally with an additional subtractive term if
     /// any outcome is < 1 and an additive to the `x` if any predictor is < 1).
-    ///
-    /// Also sometimes called "growth".
     ///
     /// # Panics
     ///
@@ -816,8 +817,8 @@ pub mod derived {
         ExponentialCoefficients {
             k,
             b,
-            predictor_additive,
-            outcome_additive,
+            predictor_additive: predictor_additive.unwrap_or(0.),
+            outcome_additive: outcome_additive.unwrap_or(0.),
         }
     }
 }
@@ -2329,6 +2330,7 @@ pub mod spiral {
     /// aren't squared, which increases the magnitude of outliers.
     ///
     /// `O(n)`
+    #[inline(always)]
     pub fn manhattan_distance(
         model: &impl Predictive,
         predictors: &[f64],
