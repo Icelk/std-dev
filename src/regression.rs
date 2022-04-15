@@ -218,11 +218,29 @@ pub mod models {
     impl PolynomialCoefficients {
         #[inline(always)]
         fn naive_predict(&self, predictor: f64) -> f64 {
-            let mut out = 0.0;
-            for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
-                out += predictor.powi(degree as i32) * coefficient;
+            match self.coefficients.len() {
+                0 => 0.,
+                1 => self.coefficients[0],
+                2 => self.coefficients[1] * predictor + self.coefficients[0],
+                3 => {
+                    self.coefficients[2] * predictor * predictor
+                        + self.coefficients[1] * predictor
+                        + self.coefficients[0]
+                }
+                4 => {
+                    self.coefficients[3] * predictor * predictor * predictor
+                        + self.coefficients[2] * predictor * predictor
+                        + self.coefficients[1] * predictor
+                        + self.coefficients[0]
+                }
+                _ => {
+                    let mut out = 0.0;
+                    for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
+                        out += predictor.powi(degree as i32) * coefficient;
+                    }
+                    out
+                }
             }
-            out
         }
     }
     impl Predictive for PolynomialCoefficients {
