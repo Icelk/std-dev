@@ -2644,7 +2644,7 @@ pub mod spiral {
         options: Options,
     ) -> [f64; 2] {
         let Options {
-            mut exponent_coefficient,
+            exponent_coefficient,
             angle_coefficient,
             num_lockon,
             samples_per_rotation,
@@ -2652,20 +2652,25 @@ pub mod spiral {
             turns: _,
         } = options;
         let advance = TAU / samples_per_rotation;
-        let mut best = ((f64::MIN, 1.), [0.; 2]);
+        let mut best = ((f64::MIN, [1.; 2], 1.), [0.; 2]);
         let mut last_best = f64::MIN;
+
+        let mut exponent_coefficients = [exponent_coefficient; 2];
 
         for i in 0..num_lockon {
             let mut theta = range.start;
             while theta < range.end {
-                let a = exponent_coefficient * E.powf(angle_coefficient * theta) * theta.cos()
-                    + best.1[0];
-                let b = exponent_coefficient * E.powf(angle_coefficient * theta) * theta.sin()
-                    + best.1[1];
+                let r = E.powf(theta * angle_coefficient);
+                let a0 = r * theta.cos();
+                let b0 = r * theta.sin();
+                let a = a0 * exponent_coefficients[0] + best.1[0];
+                let b = b0 * exponent_coefficients[1] + best.1[1];
 
-                let fitness = fitness_function([a, b]);
+                let coeffs = [a, b];
+
+                let fitness = fitness_function(coeffs);
                 if fitness > best.0 .0 {
-                    best = ((fitness, E.powf(angle_coefficient * theta)), [a, b]);
+                    best = ((fitness, [a0, b0], r), coeffs);
                 }
 
                 theta += advance;
@@ -2674,16 +2679,20 @@ pub mod spiral {
             if last_best == best.0 .0 && i != 0 {
                 return best.1;
             }
-            last_best = best.0 .0;
+            // Update "zoom" of spiral
             // don't go full out, "ease" this into several approaching steps with .sqrt to avoid
             // overcorrection.
-            exponent_coefficient *= best.0 .1.sqrt();
+            let best_size = best.0;
+            exponent_coefficients[0] *= (best_size.1[0].abs() + best_size.2 / 32.).sqrt();
+            exponent_coefficients[1] *= (best_size.1[1].abs() + best_size.2 / 32.).sqrt();
+
+            last_best = best.0 .0;
 
             // uncomment line below to see how the coefficient changes and the current best.
             // reveals how it shrinks the spiral, and sometimes enlarges it to later zoom in (if
             // enough iterations are allowed)
             //
-            // println!("Iteration complete. exponent_coefficient: {exponent_coefficient} best: {best:?}");
+            // println!("Iteration complete. exponent_coefficients: {exponent_coefficients:.3?} best: {best:.3?}");
         }
         best.1
     }
@@ -2702,7 +2711,7 @@ pub mod spiral {
         // See the function above for more documentation.
         // This is the same, but with three dimensions instead.
         let Options {
-            mut exponent_coefficient,
+            exponent_coefficient,
             angle_coefficient,
             num_lockon,
             samples_per_rotation,
@@ -2711,27 +2720,27 @@ pub mod spiral {
         } = options;
         let advance = TAU / samples_per_rotation;
 
-        let polynomial_identity = [0.; 3];
-        let mut best = ((f64::MIN, 1.), polynomial_identity);
+        let mut best = ((f64::MIN, [1.; 3], 1.), [0.; 3]);
         let mut last_best = f64::MIN;
 
-        let mut current_coefficients = polynomial_identity;
+        let mut exponent_coefficients = [exponent_coefficient; 3];
 
         for i in 0..num_lockon {
             let mut theta = range.start;
             while theta < range.end {
-                let r = E.powf(theta * angle_coefficient) * exponent_coefficient;
-                let a = r * theta.sin() * (turns * theta).cos() + best.1[0];
-                let b = r * theta.sin() * (turns * theta).sin() + best.1[1];
-                let c = r * theta.cos() + best.1[2];
+                let r = E.powf(theta * angle_coefficient);
+                let a0 = r * theta.sin() * (turns * theta).cos();
+                let b0 = r * theta.sin() * (turns * theta).sin();
+                let c0 = r * theta.cos();
+                let a = a0 * exponent_coefficients[0] + best.1[0];
+                let b = b0 * exponent_coefficients[1] + best.1[1];
+                let c = c0 * exponent_coefficients[2] + best.1[2];
 
-                current_coefficients[0] = a;
-                current_coefficients[1] = b;
-                current_coefficients[2] = c;
+                let coeffs = [a, b, c];
 
-                let fitness = fitness_function(current_coefficients);
+                let fitness = fitness_function(coeffs);
                 if fitness > best.0 .0 {
-                    best = ((fitness, r / exponent_coefficient), current_coefficients);
+                    best = ((fitness, [a0, b0, c0], r), coeffs);
                 }
 
                 theta += advance;
@@ -2739,8 +2748,13 @@ pub mod spiral {
             if last_best == best.0 .0 && i != 0 {
                 return best.1;
             }
+
+            let best_size = best.0;
+            exponent_coefficients[0] *= (best_size.1[0].abs() + best_size.2 / 32.).sqrt();
+            exponent_coefficients[1] *= (best_size.1[1].abs() + best_size.2 / 32.).sqrt();
+            exponent_coefficients[2] *= (best_size.1[2].abs() + best_size.2 / 32.).sqrt();
+
             last_best = best.0 .0;
-            exponent_coefficient *= best.0 .1.sqrt();
         }
         best.1
     }
