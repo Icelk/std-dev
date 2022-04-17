@@ -8,9 +8,12 @@ use std::io::{stdin, BufRead};
 use std::process::exit;
 use std::str::FromStr;
 use std::time::Instant;
+use std_dev::regression::{
+    CosecantEstimator, CosineEstimator, CotangentEstimator, ExponentialEstimator,
+    LogisticEstimator, PowerEstimator, SecantEstimator, SineEstimator, TangentEstimator,
+};
 #[cfg(feature = "regression")]
 use std_dev::regression::{Determination, LinearEstimator, PolynomialEstimator, Predictive};
-use std_dev::regression::{ExponentialEstimator, LogisticEstimator, PowerEstimator};
 
 pub use std_dev;
 
@@ -198,7 +201,19 @@ fn main() {
             Predictors are the independent values (usually denoted `x`) from which we want a equation to get the \
             outcomes - the dependant variables, usually `y` or `f(x)`.",
                 )
-                .group(clap::ArgGroup::new("model").arg("degree").arg("linear").arg("power").arg("exponential").arg("logistic"))
+                .group(clap::ArgGroup::new("model")
+                    .arg("degree")
+                    .arg("linear")
+                    .arg("power")
+                    .arg("exponential")
+                    .arg("logistic")
+                    .arg("sin")
+                    .arg("cos")
+                    .arg("tan")
+                    .arg("sec")
+                    .arg("csc")
+                    .arg("cot")
+                )
                 .group(clap::ArgGroup::new("estimator").arg("theil_sen").arg("spiral").arg("ols"))
                 .arg(
                     Arg::new("degree")
@@ -231,10 +246,48 @@ fn main() {
                         .conflicts_with("theil_sen")
                 )
                 .group(
-                    clap::ArgGroup::new("required_spiral").arg("logistic").arg("spiral")
+                    clap::ArgGroup::new("required_spiral")
+                        .arg("logistic")
+                        .arg("spiral")
+                        .arg("sin")
+                        .arg("cos")
+                        .arg("tan")
+                        .arg("sec")
+                        .arg("csc")
+                        .arg("cot")
                         .multiple(true)
                         .conflicts_with("ols")
                         .conflicts_with("theil_sen")
+                )
+                .arg(
+                    Arg::new("sin")
+                        .long("sin")
+                        .help("Fit a sine wave.")
+                )
+                .arg(
+                    Arg::new("cos")
+                        .long("cos")
+                        .help("Fit a cosine wave.")
+                )
+                .arg(
+                    Arg::new("tan")
+                        .long("tan")
+                        .help("Fit a tangent function.")
+                )
+                .arg(
+                    Arg::new("sec")
+                        .long("sec")
+                        .help("Fit a secant function.")
+                )
+                .arg(
+                    Arg::new("csc")
+                        .long("csc")
+                        .help("Fit a cosecant function.")
+                )
+                .arg(
+                    Arg::new("cot")
+                        .long("cot")
+                        .help("Fit a cotangent function.")
                 )
                 .arg(
                     Arg::new("ols")
@@ -445,6 +498,18 @@ fn main() {
                     }
                 } else if config.is_present("logistic") {
                     spiral_options.model_logistic(&x, &y).boxed()
+                } else if config.is_present("sin") {
+                    spiral_options.model_sine(&x, &y).boxed()
+                } else if config.is_present("cos") {
+                    spiral_options.model_cosine(&x, &y).boxed()
+                } else if config.is_present("tan") {
+                    spiral_options.model_tangent(&x, &y).boxed()
+                } else if config.is_present("sec") {
+                    spiral_options.model_secant(&x, &y).boxed()
+                } else if config.is_present("csc") {
+                    spiral_options.model_cosecant(&x, &y).boxed()
+                } else if config.is_present("cot") {
+                    spiral_options.model_cotangent(&x, &y).boxed()
                 } else if config.is_present("linear") || config.is_present("degree") {
                     let degree = {
                         if let Ok(degree) = config.value_of_t("degree") {

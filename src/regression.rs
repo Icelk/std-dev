@@ -155,6 +155,8 @@ pub mod models {
     use super::*;
     use std::f64::consts::E;
 
+    pub use trig::*;
+
     macro_rules! estimator {
         ($(
             $(#[$docs:meta])*
@@ -470,7 +472,107 @@ pub mod models {
         /// Implemented by all estimators yielding an logistic regression.
         LogisticEstimator -> LogisticCoefficients, model_logistic, boxed_logistic
     );
+
+    /// Traits and coefficients of trigonometric functions.
+    pub mod trig {
+        use super::*;
+
+        macro_rules! simple_coefficients {
+            ($(
+                $(#[$docs:meta])+
+                $name:ident, f64::$fn:ident
+            )+) => {
+                simple_coefficients!($($(#[$docs])* $name, v f64::$fn(v), stringify!($fn))+);
+            };
+            ($(
+                $(#[$docs:meta])+
+                $name:ident, 1 / f64::$fn:ident, $disp:expr
+            )+) => {
+                simple_coefficients!($($(#[$docs])* $name, v 1.0/f64::$fn(v), $disp)+);
+            };
+            ($(
+                $(#[$docs:meta])+
+                $name:ident, $v:ident $fn:expr, $disp:expr
+            )+) => {
+                $(
+                $(#[$docs])+
+                #[derive(PartialEq, Clone, Debug)]
+                pub struct $name {
+                    /// The amplitude of this function.
+                    pub amplitude: f64,
+                    /// The frequency of this function.
+                    pub frequency: f64,
+                    /// The phase of this function (x offset).
+                    pub phase: f64,
+                }
+                impl Predictive for $name {
+                    fn predict_outcome(&self, predictor: f64) -> f64 {
+                        let $v = predictor * self.frequency + self.phase;
+                        self.amplitude * $fn
+                    }
+                }
+                impl Display for $name {
+                    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                        let p = f.precision().unwrap_or(5);
+                        write!(
+                            f,
+                            "{:.4$}{}({:.4$}x+{:.4$})",
+                            self.amplitude,
+                            $disp,
+                            self.frequency,
+                            self.phase,
+                            p,
+                        )
+                    }
+                }
+                impl $name {
+                    #[inline(always)]
+                    pub(crate) fn wrap(array: [f64; 3]) -> Self {
+                        Self {
+                            amplitude: array[0],
+                            frequency: array[1],
+                            phase: array[2] % (std::f64::consts::PI * 2.),
+                        }
+                    }
+                }
+                )+
+            };
         }
+        simple_coefficients!(
+        /// The coefficients of a sine wave.
+        SineCoefficients, f64::sin
+        /// The coefficients of a cosine wave.
+        CosineCoefficients, f64::cos
+        /// The coefficients of a tangent function.
+        TangentCoefficients, f64::tan
+        );
+        simple_coefficients!(
+            /// The coefficients of a secant function.
+            SecantCoefficients,
+            1 / f64::sin, "sec"
+            /// The coefficients of a cosecant function.
+            CosecantCoefficients,
+            1 / f64::cos, "csc"
+            /// The coefficients of a cotangent function.
+            CotangentCoefficients,
+            1 / f64::tan, "cot"
+        );
+
+        estimator!(
+            /// Implemented by all estimators yielding a sine wave.
+            SineEstimator -> SineCoefficients, model_sine, boxed_sine
+            /// Implemented by all estimators yielding a cosine wave.
+            CosineEstimator -> CosineCoefficients, model_cosine, boxed_cosine
+            /// Implemented by all estimators yielding a tangent function.
+            TangentEstimator -> TangentCoefficients, model_tangent, boxed_tangent
+
+            /// Implemented by all estimators yielding a secant function.
+            SecantEstimator -> SecantCoefficients, model_secant, boxed_sesecant
+            /// Implemented by all estimators yielding a cosecant function.
+            CosecantEstimator -> CosecantCoefficients, model_cosecant, boxed_cosecant
+            /// Implemented by all estimators yielding a cotangent function.
+            CotangentEstimator -> CotangentCoefficients, model_cotangent, boxed_cotangent
+        );
     }
 }
 
@@ -2384,6 +2486,14 @@ pub mod spiral {
                 outcome_additive: 0.,
             }
         }
+        #[inline(always)]
+        pub(super) fn wrap_logistic(a: [f64; 3]) -> LogisticCoefficients {
+            LogisticCoefficients {
+                x0: a[0],
+                l: a[1],
+                k: a[2],
+            }
+        }
 
         /// [`LinearEstimator`] for the spiral estimator using a fitness function and [`Options`]
         /// provided by you.
@@ -2510,14 +2620,84 @@ pub mod spiral {
             Self::new()
         }
     }
-    impl LinearEstimator for Options {
-        fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
-            estimators::wrap_linear(two_variable_optimization(
-                |model| manhattan_distance(&estimators::wrap_linear(model), predictors, outcomes),
-                self.clone(),
-            ))
-        }
+    macro_rules! impl_estimator {
+        ($(
+            $name:ident, $method:ident, $fn:ident, $ret:ident, $wrap:expr,
+        )+) => {
+            $(
+                impl $name for Options {
+                    fn $method(&self, predictors: &[f64], outcomes: &[f64]) -> $ret {
+                        $wrap($fn(
+                            #[inline(always)]
+                            |model| manhattan_distance(&$wrap(model), predictors, outcomes),
+                            self.clone(),
+                        ))
+                    }
+                }
+            )+
+        };
     }
+    impl_estimator!(
+        LinearEstimator,
+        model_linear,
+        two_variable_optimization,
+        LinearCoefficients,
+        estimators::wrap_linear,
+        //
+        PowerEstimator,
+        model_power,
+        two_variable_optimization,
+        PowerCoefficients,
+        estimators::wrap_power,
+        //
+        ExponentialEstimator,
+        model_exponential,
+        two_variable_optimization,
+        ExponentialCoefficients,
+        estimators::wrap_exponential,
+        //
+        LogisticEstimator,
+        model_logistic,
+        three_variable_optimization,
+        LogisticCoefficients,
+        estimators::wrap_logistic,
+        //
+        SineEstimator,
+        model_sine,
+        three_variable_optimization,
+        SineCoefficients,
+        SineCoefficients::wrap,
+        //
+        CosineEstimator,
+        model_cosine,
+        three_variable_optimization,
+        CosineCoefficients,
+        CosineCoefficients::wrap,
+        //
+        TangentEstimator,
+        model_tangent,
+        three_variable_optimization,
+        TangentCoefficients,
+        TangentCoefficients::wrap,
+        //
+        SecantEstimator,
+        model_secant,
+        three_variable_optimization,
+        SecantCoefficients,
+        SecantCoefficients::wrap,
+        //
+        CosecantEstimator,
+        model_cosecant,
+        three_variable_optimization,
+        CosecantCoefficients,
+        CosecantCoefficients::wrap,
+        //
+        CotangentEstimator,
+        model_cotangent,
+        three_variable_optimization,
+        CotangentCoefficients,
+        CotangentCoefficients::wrap,
+    );
     impl PolynomialEstimator for Options {
         fn model_polynomial(
             &self,
@@ -2548,47 +2728,6 @@ pub mod spiral {
                 .into(),
                 _ => panic!("unsupported degree for polynomial spiral. Supports 1,2."),
             }
-        }
-    }
-    impl PowerEstimator for Options {
-        fn model_power(&self, predictors: &[f64], outcomes: &[f64]) -> PowerCoefficients {
-            estimators::wrap_power(two_variable_optimization(
-                #[inline(always)]
-                |model| manhattan_distance(&estimators::wrap_power(model), predictors, outcomes),
-                self.clone(),
-            ))
-        }
-    }
-    impl ExponentialEstimator for Options {
-        fn model_exponential(
-            &self,
-            predictors: &[f64],
-            outcomes: &[f64],
-        ) -> ExponentialCoefficients {
-            estimators::wrap_exponential(two_variable_optimization(
-                #[inline(always)]
-                |model| {
-                    manhattan_distance(&estimators::wrap_exponential(model), predictors, outcomes)
-                },
-                self.clone(),
-            ))
-        }
-    }
-    impl LogisticEstimator for Options {
-        fn model_logistic(&self, predictors: &[f64], outcomes: &[f64]) -> LogisticCoefficients {
-            #[inline(always)]
-            fn wrap(a: [f64; 3]) -> LogisticCoefficients {
-                LogisticCoefficients {
-                    x0: a[0],
-                    l: a[1],
-                    k: a[2],
-                }
-            }
-            wrap(three_variable_optimization(
-                #[inline(always)]
-                |model| manhattan_distance(&wrap(model), predictors, outcomes),
-                self.clone(),
-            ))
         }
     }
 
