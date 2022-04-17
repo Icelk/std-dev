@@ -152,9 +152,46 @@ impl<T: Predictive> Determination for T {}
 ///
 /// You can naturally implement these yourself.
 pub mod models {
+    use super::*;
     use std::f64::consts::E;
 
-    use super::*;
+    macro_rules! estimator {
+        ($(
+            $(#[$docs:meta])*
+            $name:ident -> $item:ty,
+            $($(#[$more_docs:meta])+ ($($arg:ident: $ty:ty),*),)?
+            $model:ident, $box:ident
+        )+) => {
+            $(
+            $(#[$docs])*
+            pub trait $name {
+                // #[doc = stringify!("Model the [`", $item, "`] from `predictors` and `outcomes`."]
+                #[doc = "Model the [`"]
+                #[doc = stringify!($item)]
+                #[doc = "`] from `predictors` and `outcomes`."]
+                $($(#[$more_docs])+)?
+                ///
+                /// # Panics
+                ///
+                /// The two slices must have the same length.
+                fn $model(&self, predictors: &[f64], outcomes: &[f64], $($($arg: $ty),*)?) -> $item;
+                /// Put this estimator in a box.
+                /// This is useful for conditionally choosing different estimators.
+                fn $box(self) -> Box<dyn $name>
+                where
+                    Self: Sized + 'static,
+                {
+                    Box::new(self)
+                }
+            }
+            impl<T: $name + ?Sized> $name for &T {
+                fn $model(&self, predictors: &[f64], outcomes: &[f64], $($($arg:$ty),*)?) -> $item {
+                    (**self).$model(predictors, outcomes, $($($arg),*)?)
+                }
+            }
+            )+
+        };
+    }
 
     /// The coefficients of a line.
     #[derive(Debug, Clone, Copy, PartialEq)]
@@ -414,103 +451,25 @@ pub mod models {
         }
     }
 
-    /// Implemented by all methods yielding a linear 2 variable regression (a line).
-    pub trait LinearEstimator {
-        /// Model the [`LinearCoefficients`] from `predictors` and `outcomes`.
-        ///
-        /// # Panics
-        ///
-        /// The two slices must have the same length.
-        fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients;
-        /// Put this estimator in a box.
-        /// This is useful for conditionally choosing different estimators.
-        fn boxed_linear(self) -> Box<dyn LinearEstimator>
-        where
-            Self: Sized + 'static,
-        {
-            Box::new(self)
-        }
-    }
-    impl<T: LinearEstimator + ?Sized> LinearEstimator for &T {
-        fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
-            (**self).model_linear(predictors, outcomes)
-        }
-    }
-    /// Implemented by all methods yielding a polynomial regression.
-    pub trait PolynomialEstimator {
-        /// Model the [`PolynomialCoefficients`] from `predictors` and `outcomes` with `degree`.
-        ///
-        /// # Panics
-        ///
-        /// The two slices must have the same length.
-        fn model_polynomial(
-            &self,
-            predictors: &[f64],
-            outcomes: &[f64],
-            degree: usize,
-        ) -> PolynomialCoefficients;
-        /// Put this estimator in a box.
-        /// This is useful for conditionally choosing different estimators.
-        fn boxed_polynomial(self) -> Box<dyn PolynomialEstimator>
-        where
-            Self: Sized + 'static,
-        {
-            Box::new(self)
-        }
-    }
-    /// Implemented by all methods yielding an power regression.
-    pub trait PowerEstimator {
-        /// Model the [`ExponentialCoefficients`] from `predictors` and `outcomes`.
-        ///
-        /// # Panics
-        ///
-        /// The two slices must have the same length.
-        fn model_power(&self, predictors: &[f64], outcomes: &[f64]) -> PowerCoefficients;
-        /// Put this estimator in a box.
-        /// This is useful for conditionally choosing different estimators.
-        fn boxed_power(self) -> Box<dyn PowerEstimator>
-        where
-            Self: Sized + 'static,
-        {
-            Box::new(self)
-        }
-    }
-    /// Implemented by all methods yielding an exponential regression.
-    pub trait ExponentialEstimator {
-        /// Model the [`ExponentialCoefficients`] from `predictors` and `outcomes`.
-        ///
-        /// # Panics
-        ///
-        /// The two slices must have the same length.
-        fn model_exponential(
-            &self,
-            predictors: &[f64],
-            outcomes: &[f64],
-        ) -> ExponentialCoefficients;
-        /// Put this estimator in a box.
-        /// This is useful for conditionally choosing different estimators.
-        fn boxed_exponential(self) -> Box<dyn ExponentialEstimator>
-        where
-            Self: Sized + 'static,
-        {
-            Box::new(self)
-        }
-    }
-    /// Implemented by all methods yielding a logistic regression.
-    pub trait LogisticEstimator {
-        /// Model the [`LogisticCoefficients`] from `predictors` and `outcomes`.
-        ///
-        /// # Panics
-        ///
-        /// The two slices must have the same length.
-        fn model_logistic(&self, predictors: &[f64], outcomes: &[f64]) -> LogisticCoefficients;
-        /// Put this estimator in a box.
-        /// This is useful for conditionally choosing different estimators.
-        fn boxed_logistic(self) -> Box<dyn LogisticEstimator>
-        where
-            Self: Sized + 'static,
-        {
-            Box::new(self)
+    estimator!(
+        /// Implemented by all estimators yielding a linear 2 variable regression (a line).
+        LinearEstimator -> LinearCoefficients, model_linear, boxed_linear
+
+        /// Implemented by all estimators yielding a polynomial regression.
+        PolynomialEstimator -> PolynomialCoefficients,
+        /// Also takes a `degree` of the target polynomial. Some estimators may panic when `degree`
+        /// is out of their range.
+        (degree: usize), model_polynomial, boxed_polynomial
+
+        /// Implemented by all estimators yielding a power regression.
+        PowerEstimator -> PowerCoefficients, model_power, boxed_power
+
+        /// Implemented by all estimators yielding an exponential regression.
+        ExponentialEstimator -> ExponentialCoefficients, model_exponential, boxed_exponential
+
+        /// Implemented by all estimators yielding an logistic regression.
+        LogisticEstimator -> LogisticCoefficients, model_logistic, boxed_logistic
+    );
         }
     }
 }
@@ -2374,7 +2333,7 @@ pub mod spiral {
     use std::ops::Range;
 
     /// Like [`Determination::determination_slice`] but faster and more robust to outliers - values
-    /// aren't squared, which increases the magnitude of outliers.
+    /// aren't squared (which increases the magnitude of outliers).
     ///
     /// `O(n)`
     #[inline(always)]
