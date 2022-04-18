@@ -2434,103 +2434,130 @@ pub mod spiral {
     use std::f64::consts::{E, TAU};
     use std::ops::Range;
 
-    /// Like [`Determination::determination_slice`] but faster and more robust to outliers - values
-    /// aren't squared (which increases the magnitude of outliers).
+    /// Samples points on a logarithmic spiral in the phase space of all possible straight lines.
     ///
-    /// `O(n)`
-    #[inline(always)]
-    pub fn manhattan_distance(
-        model: &impl Predictive,
-        predictors: &[f64],
-        outcomes: &[f64],
-    ) -> f64 {
-        let mut error = 0.;
-        for (predictor, outcome) in predictors.iter().copied().zip(outcomes.iter().copied()) {
-            let predicted = model.predict_outcome(predictor);
-            let length = (predicted - outcome).abs();
-            error += length;
-        }
+    /// See [`Options`].
+    ///
+    /// Can be used for models other than linear, as this just optimizes two floats according to
+    /// `fitness_function`. The returned values are the best match.
+    pub fn two_variable_optimization(
+        fitness_function: impl Fn([f64; 2]) -> f64,
+        options: Options,
+    ) -> [f64; 2] {
+        let Options {
+            exponent_coefficient,
+            angle_coefficient,
+            num_lockon,
+            samples_per_rotation,
+            range,
+            turns: _,
+        } = options;
+        let advance = TAU / samples_per_rotation;
+        let mut best = ((f64::MIN, [1.; 2], 1.), [0.; 2]);
+        let mut last_best = f64::MIN;
 
-        0.0 - error
+        let mut exponent_coefficients = [exponent_coefficient; 2];
+
+        for i in 0..num_lockon {
+            let mut theta = range.start;
+            while theta < range.end {
+                let r = E.powf(theta * angle_coefficient);
+                let a0 = r * theta.cos();
+                let b0 = r * theta.sin();
+                let a = a0 * exponent_coefficients[0] + best.1[0];
+                let b = b0 * exponent_coefficients[1] + best.1[1];
+
+                let coeffs = [a, b];
+
+                let fitness = fitness_function(coeffs);
+                if fitness > best.0 .0 {
+                    best = ((fitness, [a0, b0], r), coeffs);
+                }
+
+                theta += advance;
+            }
+            // If the best didn't change, we aren't going to find better results.
+            if last_best == best.0 .0 && i != 0 {
+                return best.1;
+            }
+            // Update "zoom" of spiral
+            // don't go full out, "ease" this into several approaching steps with .sqrt to avoid
+            // overcorrection.
+            let best_size = best.0;
+            exponent_coefficients[0] *= (best_size.1[0].abs() + best_size.2 / 32.).sqrt();
+            exponent_coefficients[1] *= (best_size.1[1].abs() + best_size.2 / 32.).sqrt();
+
+            last_best = best.0 .0;
+
+            // uncomment line below to see how the coefficient changes and the current best.
+            // reveals how it shrinks the spiral, and sometimes enlarges it to later zoom in (if
+            // enough iterations are allowed)
+            //
+            // println!("Iteration complete. exponent_coefficients: {exponent_coefficients:.3?} best: {best:.3?}");
+        }
+        best.1
     }
+    /// Samples points on a spherical spiral in the phase space of all second degree polynomials.
+    /// As θ (the angle) increases, the imaginary sphere's size is increased.
+    /// This gives a good distribution of sample points in 3d space.
+    ///
+    /// See [`Options`].
+    ///
+    /// This function just optimizes three floats according to `fitness_function`.
+    /// The returned value is the best match.
+    pub fn three_variable_optimization(
+        fitness_function: impl Fn([f64; 3]) -> f64,
+        options: Options,
+    ) -> [f64; 3] {
+        // See the function above for more documentation.
+        // This is the same, but with three dimensions instead.
+        let Options {
+            exponent_coefficient,
+            angle_coefficient,
+            num_lockon,
+            samples_per_rotation,
+            range,
+            turns,
+        } = options;
+        let advance = TAU / samples_per_rotation;
 
-    /// Estimators based on the general spiral method.
-    pub mod estimators {
-        use super::*;
+        let mut best = ((f64::MIN, [1.; 3], 1.), [0.; 3]);
+        let mut last_best = f64::MIN;
 
-        pub(super) fn trig_adjusted_manhattan_distance(
-            model: &impl Predictive,
-            params: [f64; 3],
-            predictors: &[f64],
-            outcomes: &[f64],
-            max_frequency: f64,
-        ) -> f64 {
-            let mut base = manhattan_distance(model, predictors, outcomes);
-            if params[0].is_sign_negative()
-                || params[1].is_sign_negative()
-                || params[2].is_sign_negative()
-            {
-                base *= 10.;
-            }
-            if params[1] > max_frequency {
-                base *= 10.;
-            }
-            base
-        }
+        let mut exponent_coefficients = [exponent_coefficient; 3];
 
-        pub(super) struct SecondDegreePolynomial(pub(super) [f64; 3]);
-        impl Predictive for SecondDegreePolynomial {
-            fn predict_outcome(&self, predictor: f64) -> f64 {
-                self.0[0] + self.0[1] * predictor + self.0[2] * predictor * predictor
-            }
-        }
-        #[inline(always)]
-        pub(super) fn wrap_linear(a: [f64; 2]) -> LinearCoefficients {
-            LinearCoefficients { k: a[1], m: a[0] }
-        }
-        #[inline(always)]
-        pub(super) fn wrap_power(a: [f64; 2]) -> PowerCoefficients {
-            PowerCoefficients {
-                e: a[1],
-                k: a[0],
-                predictor_additive: 0.,
-                outcome_additive: 0.,
-            }
-        }
-        #[inline(always)]
-        pub(super) fn wrap_exponential(a: [f64; 2]) -> ExponentialCoefficients {
-            ExponentialCoefficients {
-                b: a[1],
-                k: a[0],
-                predictor_additive: 0.,
-                outcome_additive: 0.,
-            }
-        }
-        #[inline(always)]
-        pub(super) fn wrap_logistic(a: [f64; 3]) -> LogisticCoefficients {
-            LogisticCoefficients {
-                x0: a[0],
-                l: a[1],
-                k: a[2],
-            }
-        }
+        for i in 0..num_lockon {
+            let mut theta = range.start;
+            while theta < range.end {
+                let r = E.powf(theta * angle_coefficient);
+                let a0 = r * theta.sin() * (turns * theta).cos();
+                let b0 = r * theta.sin() * (turns * theta).sin();
+                let c0 = r * theta.cos();
+                let a = a0 * exponent_coefficients[0] + best.1[0];
+                let b = b0 * exponent_coefficients[1] + best.1[1];
+                let c = c0 * exponent_coefficients[2] + best.1[2];
 
-        /// [`LinearEstimator`] for the spiral estimator using a fitness function and [`Options`]
-        /// provided by you.
-        /// `O(fitness function)`
-        pub struct LinearSpiral<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64>(
-            pub F,
-            pub Options,
-        );
-        impl<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64> LinearEstimator for LinearSpiral<F> {
-            fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
-                wrap_linear(two_variable_optimization(
-                    #[inline(always)]
-                    |model| self.0(&wrap_linear(model), predictors, outcomes),
-                    self.1.clone(),
-                ))
+                let coeffs = [a, b, c];
+
+                let fitness = fitness_function(coeffs);
+                if fitness > best.0 .0 {
+                    best = ((fitness, [a0, b0, c0], r), coeffs);
+                }
+
+                theta += advance;
             }
+            if last_best == best.0 .0 && i != 0 {
+                return best.1;
+            }
+
+            let best_size = best.0;
+            exponent_coefficients[0] *= (best_size.1[0].abs() + best_size.2 / 32.).sqrt();
+            exponent_coefficients[1] *= (best_size.1[1].abs() + best_size.2 / 32.).sqrt();
+            exponent_coefficients[2] *= (best_size.1[2].abs() + best_size.2 / 32.).sqrt();
+
+            last_best = best.0 .0;
         }
+        best.1
     }
 
     /// Options for the spiral.
@@ -2640,6 +2667,106 @@ pub mod spiral {
             Self::new()
         }
     }
+
+    /// Like [`Determination::determination_slice`] but faster and more robust to outliers - values
+    /// aren't squared (which increases the magnitude of outliers).
+    ///
+    /// `O(n)`
+    #[inline(always)]
+    pub fn manhattan_distance(
+        model: &impl Predictive,
+        predictors: &[f64],
+        outcomes: &[f64],
+    ) -> f64 {
+        let mut error = 0.;
+        for (predictor, outcome) in predictors.iter().copied().zip(outcomes.iter().copied()) {
+            let predicted = model.predict_outcome(predictor);
+            let length = (predicted - outcome).abs();
+            error += length;
+        }
+
+        0.0 - error
+    }
+
+    /// Estimators based on the general spiral method.
+    pub mod estimators {
+        use super::*;
+
+        pub(super) fn trig_adjusted_manhattan_distance(
+            model: &impl Predictive,
+            params: [f64; 3],
+            predictors: &[f64],
+            outcomes: &[f64],
+            max_frequency: f64,
+        ) -> f64 {
+            let mut base = manhattan_distance(model, predictors, outcomes);
+            if params[0].is_sign_negative()
+                || params[1].is_sign_negative()
+                || params[2].is_sign_negative()
+            {
+                base *= 10.;
+            }
+            if params[1] > max_frequency {
+                base *= 10.;
+            }
+            base
+        }
+
+        pub(super) struct SecondDegreePolynomial(pub(super) [f64; 3]);
+        impl Predictive for SecondDegreePolynomial {
+            fn predict_outcome(&self, predictor: f64) -> f64 {
+                self.0[0] + self.0[1] * predictor + self.0[2] * predictor * predictor
+            }
+        }
+        #[inline(always)]
+        pub(super) fn wrap_linear(a: [f64; 2]) -> LinearCoefficients {
+            LinearCoefficients { k: a[1], m: a[0] }
+        }
+        #[inline(always)]
+        pub(super) fn wrap_power(a: [f64; 2]) -> PowerCoefficients {
+            PowerCoefficients {
+                e: a[1],
+                k: a[0],
+                predictor_additive: 0.,
+                outcome_additive: 0.,
+            }
+        }
+        #[inline(always)]
+        pub(super) fn wrap_exponential(a: [f64; 2]) -> ExponentialCoefficients {
+            ExponentialCoefficients {
+                b: a[1],
+                k: a[0],
+                predictor_additive: 0.,
+                outcome_additive: 0.,
+            }
+        }
+        #[inline(always)]
+        pub(super) fn wrap_logistic(a: [f64; 3]) -> LogisticCoefficients {
+            LogisticCoefficients {
+                x0: a[0],
+                l: a[1],
+                k: a[2],
+            }
+        }
+
+        /// [`LinearEstimator`] for the spiral estimator using a fitness function and [`Options`]
+        /// provided by you.
+        /// `O(fitness function)`
+        pub struct LinearSpiral<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64>(
+            pub F,
+            pub Options,
+        );
+        impl<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64> LinearEstimator for LinearSpiral<F> {
+            fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+                wrap_linear(two_variable_optimization(
+                    #[inline(always)]
+                    |model| self.0(&wrap_linear(model), predictors, outcomes),
+                    self.1.clone(),
+                ))
+            }
+        }
+    }
+
     macro_rules! impl_estimator {
         ($(
             $name:ident, $method:ident, $fn:ident, $ret:ident, $wrap:expr,
@@ -2767,131 +2894,5 @@ pub mod spiral {
                 _ => panic!("unsupported degree for polynomial spiral. Supports 1,2."),
             }
         }
-    }
-
-    /// Samples points on a logarithmic spiral in the phase space of all possible straight lines.
-    ///
-    /// See [`Options`].
-    ///
-    /// Can be used for models other than linear, as this just optimizes two floats according to
-    /// `fitness_function`. The returned values are the best match.
-    pub fn two_variable_optimization(
-        fitness_function: impl Fn([f64; 2]) -> f64,
-        options: Options,
-    ) -> [f64; 2] {
-        let Options {
-            exponent_coefficient,
-            angle_coefficient,
-            num_lockon,
-            samples_per_rotation,
-            range,
-            turns: _,
-        } = options;
-        let advance = TAU / samples_per_rotation;
-        let mut best = ((f64::MIN, [1.; 2], 1.), [0.; 2]);
-        let mut last_best = f64::MIN;
-
-        let mut exponent_coefficients = [exponent_coefficient; 2];
-
-        for i in 0..num_lockon {
-            let mut theta = range.start;
-            while theta < range.end {
-                let r = E.powf(theta * angle_coefficient);
-                let a0 = r * theta.cos();
-                let b0 = r * theta.sin();
-                let a = a0 * exponent_coefficients[0] + best.1[0];
-                let b = b0 * exponent_coefficients[1] + best.1[1];
-
-                let coeffs = [a, b];
-
-                let fitness = fitness_function(coeffs);
-                if fitness > best.0 .0 {
-                    best = ((fitness, [a0, b0], r), coeffs);
-                }
-
-                theta += advance;
-            }
-            // If the best didn't change, we aren't going to find better results.
-            if last_best == best.0 .0 && i != 0 {
-                return best.1;
-            }
-            // Update "zoom" of spiral
-            // don't go full out, "ease" this into several approaching steps with .sqrt to avoid
-            // overcorrection.
-            let best_size = best.0;
-            exponent_coefficients[0] *= (best_size.1[0].abs() + best_size.2 / 32.).sqrt();
-            exponent_coefficients[1] *= (best_size.1[1].abs() + best_size.2 / 32.).sqrt();
-
-            last_best = best.0 .0;
-
-            // uncomment line below to see how the coefficient changes and the current best.
-            // reveals how it shrinks the spiral, and sometimes enlarges it to later zoom in (if
-            // enough iterations are allowed)
-            //
-            // println!("Iteration complete. exponent_coefficients: {exponent_coefficients:.3?} best: {best:.3?}");
-        }
-        best.1
-    }
-    /// Samples points on a spherical spiral in the phase space of all second degree polynomials.
-    /// As θ (the angle) increases, the imaginary sphere's size is increased.
-    /// This gives a good distribution of sample points in 3d space.
-    ///
-    /// See [`Options`].
-    ///
-    /// This function just optimizes three floats according to `fitness_function`.
-    /// The returned value is the best match.
-    pub fn three_variable_optimization(
-        fitness_function: impl Fn([f64; 3]) -> f64,
-        options: Options,
-    ) -> [f64; 3] {
-        // See the function above for more documentation.
-        // This is the same, but with three dimensions instead.
-        let Options {
-            exponent_coefficient,
-            angle_coefficient,
-            num_lockon,
-            samples_per_rotation,
-            range,
-            turns,
-        } = options;
-        let advance = TAU / samples_per_rotation;
-
-        let mut best = ((f64::MIN, [1.; 3], 1.), [0.; 3]);
-        let mut last_best = f64::MIN;
-
-        let mut exponent_coefficients = [exponent_coefficient; 3];
-
-        for i in 0..num_lockon {
-            let mut theta = range.start;
-            while theta < range.end {
-                let r = E.powf(theta * angle_coefficient);
-                let a0 = r * theta.sin() * (turns * theta).cos();
-                let b0 = r * theta.sin() * (turns * theta).sin();
-                let c0 = r * theta.cos();
-                let a = a0 * exponent_coefficients[0] + best.1[0];
-                let b = b0 * exponent_coefficients[1] + best.1[1];
-                let c = c0 * exponent_coefficients[2] + best.1[2];
-
-                let coeffs = [a, b, c];
-
-                let fitness = fitness_function(coeffs);
-                if fitness > best.0 .0 {
-                    best = ((fitness, [a0, b0, c0], r), coeffs);
-                }
-
-                theta += advance;
-            }
-            if last_best == best.0 .0 && i != 0 {
-                return best.1;
-            }
-
-            let best_size = best.0;
-            exponent_coefficients[0] *= (best_size.1[0].abs() + best_size.2 / 32.).sqrt();
-            exponent_coefficients[1] *= (best_size.1[1].abs() + best_size.2 / 32.).sqrt();
-            exponent_coefficients[2] *= (best_size.1[2].abs() + best_size.2 / 32.).sqrt();
-
-            last_best = best.0 .0;
-        }
-        best.1
     }
 }
