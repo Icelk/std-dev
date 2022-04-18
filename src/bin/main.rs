@@ -165,24 +165,36 @@ fn main() {
             "Statistics calculation tool.\n\
             A common pattern is to cat files and pipe the data.",
         )
-        .arg(Arg::new("debug-performance").short('p').long("debug-performance").help(
-            "Print performance information. \
+        .arg(
+            Arg::new("debug-performance")
+                .short('p')
+                .long("debug-performance")
+                .help(
+                    "Print performance information. \
             Can also be enabled by setting the DEBUG_PERFORMANCE environment variable.",
-        ))
+                ),
+        )
         .arg(Arg::new("multiline").short('m').long("multiline").help(
-            "Accept multiple lines as one input. Two consecutive newlines is treated as the series separator. \
-            When not doing regression analysis the second 'column' is the count of the first. Acts more like CSV.",
+            "Accept multiple lines as one input. \
+            Two consecutive newlines is treated as the series separator. \
+            When not doing regression analysis the second 'column' \
+            is the count of the first. Acts more like CSV.",
         ))
         .arg(
             Arg::new("precision")
                 .short('n')
                 .long("precision")
                 .help(
-                    "Sets the precision of the output. When this isn't set, Rust decides how many digits to print. \
-                    The determination will be 4 decimal places long. When this is set, all numbers are rounded.",
+                    "Sets the precision of the output. When this isn't set, \
+                    Rust decides how many digits to print. \
+                    The determination will be 4 decimal places long. \
+                    When this is set, all numbers are rounded.",
                 )
                 .takes_value(true)
-                .validator(|v| v.parse::<usize>().map_err(|_| "precision needs to be a positive integer".to_owned()))
+                .validator(|v| {
+                    v.parse::<usize>()
+                        .map_err(|_| "precision needs to be a positive integer".to_owned())
+                })
                 .value_hint(ValueHint::Other),
         );
 
@@ -197,53 +209,83 @@ fn main() {
             clap::Command::new("regression")
                 .about(
                     "Find a equation which describes the input data. \
-            Tries to automatically determine the model if no arguments specifying it are provided. \
-            Predictors are the independent values (usually denoted `x`) from which we want a equation to get the \
-            outcomes - the dependant variables, usually `y` or `f(x)`.",
+                    Tries to automatically determine the model \
+                    if no arguments specifying it are provided. \
+                    Predictors are the independent values (usually denoted `x`) \
+                    from which we want a equation to get the \
+                    outcomes - the dependant variables, usually `y` or `f(x)`.",
                 )
-                .group(clap::ArgGroup::new("model")
-                    .arg("degree")
-                    .arg("linear")
-                    .arg("power")
-                    .arg("exponential")
-                    .arg("logistic")
-                    .arg("sin")
-                    .arg("cos")
-                    .arg("tan")
-                    .arg("sec")
-                    .arg("csc")
-                    .arg("cot")
+                .group(
+                    clap::ArgGroup::new("model")
+                        .arg("degree")
+                        .arg("linear")
+                        .arg("power")
+                        .arg("exponential")
+                        .arg("logistic")
+                        .arg("sin")
+                        .arg("cos")
+                        .arg("tan")
+                        .arg("sec")
+                        .arg("csc")
+                        .arg("cot"),
                 )
-                .group(clap::ArgGroup::new("estimator").arg("theil_sen").arg("spiral").arg("ols"))
+                .group(
+                    clap::ArgGroup::new("estimator")
+                        .arg("theil_sen")
+                        .arg("spiral")
+                        .arg("ols"),
+                )
                 .arg(
                     Arg::new("degree")
                         .short('d')
                         .long("degree")
                         .help("Degree of polynomial.")
                         .takes_value(true)
-                        .validator(|o| o.parse::<usize>().map_err(|_| "Degree must be an integer".to_owned()))
+                        .validator(|o| {
+                            o.parse::<usize>()
+                                .map_err(|_| "Degree must be an integer".to_owned())
+                        })
                         .value_hint(ValueHint::Other),
                 )
-                .arg(Arg::new("linear").short('l').long("linear").help("Tries to fit a line to the provided data."))
+                .arg(
+                    Arg::new("linear")
+                        .short('l')
+                        .long("linear")
+                        .help("Tries to fit a line to the provided data."),
+                )
                 .arg(Arg::new("power").short('p').long("power").help(
                     "Tries to fit a curve defined by the equation `a * x^b` to the data.\
-                If any of the predictors are below 1, x becomes (x+c), where c is an offset to the predictors. \
-                This is due to the arithmetic issue of taking the log of negative numbers and 0.\
-                A negative addition term will be appended if any of the outcomes are below 1.",
-                ))
-                .arg(Arg::new("exponential").short('e').visible_alias("growth").long("exponential").help(
-                    "Tries to fit a curve defined by the equation `a * b^x` to the data. \
-                If any of the predictors are below 1, x becomes (x+c), where c is an offset to the predictors. \
-                This is due to the arithmetic issue of taking the log of negative numbers and 0. \
-                A negative addition term will be appended if any of the outcomes are below 1.",
+                    If any of the predictors are below 1, x becomes (x+c), \
+                    where c is an offset to the predictors. \
+                    \
+                    This is due to the arithmetic issue of taking the \
+                    log of negative numbers and 0. A negative addition term \
+                    will be appended if any of the outcomes are below 1.",
                 ))
                 .arg(
-                    Arg::new("logistic").long("logistic").help(
-                        "Tries to fit a curve defined by the logistic equation to the data. \
-                        This requires the use of the spiral estimator."
+                    Arg::new("exponential")
+                        .short('e')
+                        .visible_alias("growth")
+                        .long("exponential")
+                        .help(
+                            "Tries to fit a curve defined by the equation `a * b^x` to the data. \
+                            If any of the predictors are below 1, x becomes (x+c), \
+                            where c is an offset to the predictors. \
+                            \
+                            This is due to the arithmetic issue of taking the \
+                            log of negative numbers and 0. A negative addition term \
+                            will be appended if any of the outcomes are below 1.",
+                        ),
+                )
+                .arg(
+                    Arg::new("logistic")
+                        .long("logistic")
+                        .help(
+                            "Tries to fit a curve defined by the logistic equation to the data. \
+                        This requires the use of the spiral estimator.",
                         )
                         .conflicts_with("ols")
-                        .conflicts_with("theil_sen")
+                        .conflicts_with("theil_sen"),
                 )
                 .group(
                     clap::ArgGroup::new("required_spiral")
@@ -257,52 +299,39 @@ fn main() {
                         .arg("cot")
                         .multiple(true)
                         .conflicts_with("ols")
-                        .conflicts_with("theil_sen")
+                        .conflicts_with("theil_sen"),
                 )
-                .arg(
-                    Arg::new("sin")
-                        .long("sin")
-                        .help("Fit a sine wave.")
+                .group(
+                    clap::ArgGroup::new("trig")
+                        .arg("sin")
+                        .arg("cos")
+                        .arg("tan")
+                        .arg("sec")
+                        .arg("csc")
+                        .arg("cot"),
                 )
-                .arg(
-                    Arg::new("cos")
-                        .long("cos")
-                        .help("Fit a cosine wave.")
-                )
-                .arg(
-                    Arg::new("tan")
-                        .long("tan")
-                        .help("Fit a tangent function.")
-                )
-                .arg(
-                    Arg::new("sec")
-                        .long("sec")
-                        .help("Fit a secant function.")
-                )
-                .arg(
-                    Arg::new("csc")
-                        .long("csc")
-                        .help("Fit a cosecant function.")
-                )
+                .arg(Arg::new("sin").long("sin").help("Fit a sine wave."))
+                .arg(Arg::new("cos").long("cos").help("Fit a cosine wave."))
+                .arg(Arg::new("tan").long("tan").help("Fit a tangent function."))
+                .arg(Arg::new("sec").long("sec").help("Fit a secant function."))
+                .arg(Arg::new("csc").long("csc").help("Fit a cosecant function."))
                 .arg(
                     Arg::new("cot")
                         .long("cot")
-                        .help("Fit a cotangent function.")
+                        .help("Fit a cotangent function."),
                 )
                 .arg(
                     Arg::new("ols")
                         .long("ols")
                         .help("Use the ordinary least squares estimator. Linear time complexity."),
                 )
-                .arg(
-                    Arg::new("theil_sen")
-                        .long("theil-sen")
-                        .short('t')
-                        .help("Use the Theil-Sen estimator instead of OLS for all models. O(n^degree)."),
-                )
+                .arg(Arg::new("theil_sen").long("theil-sen").short('t').help(
+                    "Use the Theil-Sen estimator instead of OLS for all models. O(n^degree).",
+                ))
                 .arg(Arg::new("spiral").long("spiral").short('s').help(
-                    "Use the spiral estimator instead of OLS for all models (only supports polynomial of degree 1&2). \
-                      A good result isn't guaranteed. Linear time complexity.",
+                    "Use the spiral estimator instead of OLS for all models \
+                    (only supports polynomial of degree 1&2). \
+                    A good result isn't guaranteed. Linear time complexity.",
                 ))
                 .arg(
                     Arg::new("spiral_level")
@@ -321,7 +350,11 @@ fn main() {
                         .default_value("6")
                         .value_hint(ValueHint::Other),
                 )
-                .arg(Arg::new("plot").long("plot").help("Plots the regression and input variables in a SVG."))
+                .arg(
+                    Arg::new("plot")
+                        .long("plot")
+                        .help("Plots the regression and input variables in a SVG."),
+                )
                 .arg(
                     Arg::new("plot_filename")
                         .long("plot-out")
@@ -333,8 +366,10 @@ fn main() {
                 .arg(
                     Arg::new("plot_samples")
                         .long("plot-samples")
-                        .help("Count of sample points when drawing the curve. \
-                              Always set to 2 for linear regressions.")
+                        .help(
+                            "Count of sample points when drawing the curve. \
+                              Always set to 2 for linear regressions.",
+                        )
                         .takes_value(true)
                         .requires("plot")
                         .value_hint(ValueHint::Other),
