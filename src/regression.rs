@@ -2752,11 +2752,11 @@ pub mod spiral {
         /// [`LinearEstimator`] for the spiral estimator using a fitness function and [`Options`]
         /// provided by you.
         /// `O(fitness function)`
-        pub struct LinearSpiral<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64>(
+        pub struct SpiralLinear<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64>(
             pub F,
             pub Options,
         );
-        impl<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64> LinearEstimator for LinearSpiral<F> {
+        impl<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64> LinearEstimator for SpiralLinear<F> {
             fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
                 wrap_linear(two_variable_optimization(
                     #[inline(always)]
