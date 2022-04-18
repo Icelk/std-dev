@@ -49,6 +49,7 @@ pub use derived::{exponential_ols, power_ols};
 #[cfg(feature = "ols")]
 pub use ols::OlsEstimator;
 pub use spiral::estimators::*;
+pub use spiral::SpiralLogisticWithCeiling;
 pub use theil_sen::{LinearTheilSen, PolynomialTheilSen};
 
 trait Model: Predictive + Display {}
@@ -2893,6 +2894,45 @@ pub mod spiral {
                 .into(),
                 _ => panic!("unsupported degree for polynomial spiral. Supports 1,2."),
             }
+        }
+    }
+
+    /// Implements [`LogisticEstimator`] with a known ceiling for the input values.
+    /// Uses [`manhattan_distance`] as the fitness function.
+    ///
+    /// This can be used to model logistic growth with a known max.
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct SpiralLogisticWithCeiling {
+        /// The options of the spiral regression.
+        pub opts: Options,
+        /// The max value of the input values.
+        /// This becomes [`LogisticCoefficients::l`].
+        pub ceiling: f64,
+    }
+
+    impl SpiralLogisticWithCeiling {
+        /// Create a new estimator with `ceiling` and `opts`.
+        pub fn new(opts: Options, ceiling: f64) -> Self {
+            Self { opts, ceiling }
+        }
+    }
+    impl LogisticEstimator for SpiralLogisticWithCeiling {
+        fn model_logistic(&self, predictors: &[f64], outcomes: &[f64]) -> LogisticCoefficients {
+            fn wrap(a: [f64; 2], max: f64) -> LogisticCoefficients {
+                LogisticCoefficients {
+                    x0: a[0],
+                    l: max,
+                    k: a[1],
+                }
+            }
+            wrap(
+                two_variable_optimization(
+                    #[inline]
+                    |model| manhattan_distance(&wrap(model, self.ceiling), predictors, outcomes),
+                    self.opts.clone(),
+                ),
+                self.ceiling,
+            )
         }
     }
 }

@@ -279,15 +279,21 @@ fn main() {
                             will be appended if any of the outcomes are below 1.",
                         ),
                 )
+                .arg(Arg::new("logistic").long("logistic").help(
+                    "Tries to fit a curve defined by the logistic equation to the data. \
+                    This requires the use of the spiral estimator.",
+                ))
                 .arg(
-                    Arg::new("logistic")
-                        .long("logistic")
+                    Arg::new("logistic_max")
+                        .long("logistic-ceiling")
                         .help(
-                            "Tries to fit a curve defined by the logistic equation to the data. \
-                        This requires the use of the spiral estimator.",
+                            "Give the logistic regression the maximum value of the source. \
+                            Say you know the population size and want to model the growth \
+                            of a pandemic, use this to supply the population size.",
                         )
-                        .conflicts_with("ols")
-                        .conflicts_with("theil_sen"),
+                        .requires("logistic")
+                        .validator(parse_validator::<f64>("logistic-ceiling requires a float"))
+                        .value_hint(ValueHint::Other),
                 )
                 .group(
                     clap::ArgGroup::new("required_spiral")
@@ -550,7 +556,16 @@ fn main() {
                         .boxed()
                     }
                 } else if config.is_present("logistic") {
-                    spiral_options.model_logistic(&x, &y).boxed()
+                    if let Ok(ceiling) = config.value_of_t::<f64>("logistic_max") {
+                        std_dev::regression::SpiralLogisticWithCeiling::new(
+                            spiral_options.clone(),
+                            ceiling,
+                        )
+                        .model_logistic(&x, &y)
+                        .boxed()
+                    } else {
+                        spiral_options.model_logistic(&x, &y).boxed()
+                    }
                 } else if config.is_present("sin") {
                     spiral_options.model_sine(&x, &y, trig_freq).boxed()
                 } else if config.is_present("cos") {
