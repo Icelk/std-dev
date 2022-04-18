@@ -161,7 +161,7 @@ pub mod models {
         ($(
             $(#[$docs:meta])*
             $name:ident -> $item:ty,
-            $($(#[$more_docs:meta])+ ($($arg:ident: $ty:ty),*),)?
+            $($(#[$more_docs:meta])* ($($arg:ident: $ty:ty),*),)?
             $model:ident, $box:ident
         )+) => {
             $(
@@ -171,7 +171,7 @@ pub mod models {
                 #[doc = "Model the [`"]
                 #[doc = stringify!($item)]
                 #[doc = "`] from `predictors` and `outcomes`."]
-                $($(#[$more_docs])+)?
+                $($(#[$more_docs])*)?
                 ///
                 /// # Panics
                 ///
@@ -539,12 +539,12 @@ pub mod models {
             };
         }
         simple_coefficients!(
-        /// The coefficients of a sine wave.
-        SineCoefficients, f64::sin
-        /// The coefficients of a cosine wave.
-        CosineCoefficients, f64::cos
-        /// The coefficients of a tangent function.
-        TangentCoefficients, f64::tan
+            /// The coefficients of a sine wave.
+            SineCoefficients, f64::sin
+            /// The coefficients of a cosine wave.
+            CosineCoefficients, f64::cos
+            /// The coefficients of a tangent function.
+            TangentCoefficients, f64::tan
         );
         simple_coefficients!(
             /// The coefficients of a secant function.
@@ -560,18 +560,18 @@ pub mod models {
 
         estimator!(
             /// Implemented by all estimators yielding a sine wave.
-            SineEstimator -> SineCoefficients, model_sine, boxed_sine
+            SineEstimator -> SineCoefficients, (max_frequency: f64), model_sine, boxed_sine
             /// Implemented by all estimators yielding a cosine wave.
-            CosineEstimator -> CosineCoefficients, model_cosine, boxed_cosine
+            CosineEstimator -> CosineCoefficients, (max_frequency: f64), model_cosine, boxed_cosine
             /// Implemented by all estimators yielding a tangent function.
-            TangentEstimator -> TangentCoefficients, model_tangent, boxed_tangent
+            TangentEstimator -> TangentCoefficients, (max_frequency: f64), model_tangent, boxed_tangent
 
             /// Implemented by all estimators yielding a secant function.
-            SecantEstimator -> SecantCoefficients, model_secant, boxed_sesecant
+            SecantEstimator -> SecantCoefficients, (max_frequency: f64), model_secant, boxed_sesecant
             /// Implemented by all estimators yielding a cosecant function.
-            CosecantEstimator -> CosecantCoefficients, model_cosecant, boxed_cosecant
+            CosecantEstimator -> CosecantCoefficients, (max_frequency: f64), model_cosecant, boxed_cosecant
             /// Implemented by all estimators yielding a cotangent function.
-            CotangentEstimator -> CotangentCoefficients, model_cotangent, boxed_cotangent
+            CotangentEstimator -> CotangentCoefficients, (max_frequency: f64), model_cotangent, boxed_cotangent
         );
     }
 }
@@ -2463,12 +2463,16 @@ pub mod spiral {
             params: [f64; 3],
             predictors: &[f64],
             outcomes: &[f64],
+            max_frequency: f64,
         ) -> f64 {
             let mut base = manhattan_distance(model, predictors, outcomes);
             if params[0].is_sign_negative()
                 || params[1].is_sign_negative()
                 || params[2].is_sign_negative()
             {
+                base *= 10.;
+            }
+            if params[1] > max_frequency {
                 base *= 10.;
             }
             base
@@ -2637,15 +2641,32 @@ pub mod spiral {
         }
     }
     macro_rules! impl_estimator {
-        ($model:ident $wrapped:ident $pred:ident $out:ident $fitness:expr, $(
+        ($(
             $name:ident, $method:ident, $fn:ident, $ret:ident, $wrap:expr,
         )+) => {
             $(
                 impl $name for Options {
-                    fn $method(&self, $pred: &[f64], $out: &[f64]) -> $ret {
+                    fn $method(&self, predictors: &[f64], outcomes: &[f64]) -> $ret {
                         $wrap($fn(
                             #[inline(always)]
-                            |$model| { let $wrapped = $wrap($model); $fitness},
+                            |model| manhattan_distance(&$wrap(model), predictors, outcomes),
+                            self.clone(),
+                        ))
+                    }
+                }
+            )+
+        };
+    }
+    macro_rules! impl_estimator_trig {
+        ($(
+            $name:ident, $method:ident, $fn:ident, $ret:ident, $wrap:expr,
+        )+) => {
+            $(
+                impl $name for Options {
+                    fn $method(&self, predictors: &[f64], outcomes: &[f64], max_frequency: f64) -> $ret {
+                        $wrap($fn(
+                            #[inline(always)]
+                            |model| estimators::trig_adjusted_manhattan_distance(&$wrap(model), model, predictors, outcomes, max_frequency),
                             self.clone(),
                         ))
                     }
@@ -2654,8 +2675,6 @@ pub mod spiral {
         };
     }
     impl_estimator!(
-        _m model predictors outcomes manhattan_distance(&model, predictors, outcomes),
-        //
         LinearEstimator,
         model_linear,
         two_variable_optimization,
@@ -2680,9 +2699,7 @@ pub mod spiral {
         LogisticCoefficients,
         estimators::wrap_logistic,
     );
-    impl_estimator!(
-        model wrapped predictors outcomes estimators::trig_adjusted_manhattan_distance(&wrapped, model, predictors, outcomes),
-        //
+    impl_estimator_trig!(
         SineEstimator,
         model_sine,
         three_variable_optimization,

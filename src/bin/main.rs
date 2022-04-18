@@ -321,6 +321,19 @@ fn main() {
                         .help("Fit a cotangent function."),
                 )
                 .arg(
+                    Arg::new("trig_freq")
+                        .long("trig-frequency-limit")
+                        .help("Set the limit for frequency of the fitted trigonometric function.")
+                        .requires("trig")
+                        .default_value("1.0")
+                        .validator(|v| {
+                            v.parse::<f64>()
+                                .map_err(|_| ())
+                                .and_then(|v| if v <= 0. { Err(()) } else { Ok(v) })
+                                .map_err(|_| "frequency needs to be a positive float".to_owned())
+                        }),
+                )
+                .arg(
                     Arg::new("ols")
                         .long("ols")
                         .help("Use the ordinary least squares estimator. Linear time complexity."),
@@ -492,6 +505,9 @@ fn main() {
                         }
                     }
                 };
+                let trig_freq: f64 = config
+                    .value_of_t("trig_freq")
+                    .expect("we provided a default value and have a validator");
 
                 let linear_estimator = {
                     if config.is_present("theil_sen") {
@@ -534,17 +550,17 @@ fn main() {
                 } else if config.is_present("logistic") {
                     spiral_options.model_logistic(&x, &y).boxed()
                 } else if config.is_present("sin") {
-                    spiral_options.model_sine(&x, &y).boxed()
+                    spiral_options.model_sine(&x, &y, trig_freq).boxed()
                 } else if config.is_present("cos") {
-                    spiral_options.model_cosine(&x, &y).boxed()
+                    spiral_options.model_cosine(&x, &y, trig_freq).boxed()
                 } else if config.is_present("tan") {
-                    spiral_options.model_tangent(&x, &y).boxed()
+                    spiral_options.model_tangent(&x, &y, trig_freq).boxed()
                 } else if config.is_present("sec") {
-                    spiral_options.model_secant(&x, &y).boxed()
+                    spiral_options.model_secant(&x, &y, trig_freq).boxed()
                 } else if config.is_present("csc") {
-                    spiral_options.model_cosecant(&x, &y).boxed()
+                    spiral_options.model_cosecant(&x, &y, trig_freq).boxed()
                 } else if config.is_present("cot") {
-                    spiral_options.model_cotangent(&x, &y).boxed()
+                    spiral_options.model_cotangent(&x, &y, trig_freq).boxed()
                 } else if config.is_present("linear") || config.is_present("degree") {
                     let degree = {
                         if let Ok(degree) = config.value_of_t("degree") {
