@@ -2458,6 +2458,22 @@ pub mod spiral {
     pub mod estimators {
         use super::*;
 
+        pub(super) fn trig_adjusted_manhattan_distance(
+            model: &impl Predictive,
+            params: [f64; 3],
+            predictors: &[f64],
+            outcomes: &[f64],
+        ) -> f64 {
+            let mut base = manhattan_distance(model, predictors, outcomes);
+            if params[0].is_sign_negative()
+                || params[1].is_sign_negative()
+                || params[2].is_sign_negative()
+            {
+                base *= 10.;
+            }
+            base
+        }
+
         pub(super) struct SecondDegreePolynomial(pub(super) [f64; 3]);
         impl Predictive for SecondDegreePolynomial {
             fn predict_outcome(&self, predictor: f64) -> f64 {
@@ -2621,15 +2637,15 @@ pub mod spiral {
         }
     }
     macro_rules! impl_estimator {
-        ($(
+        ($model:ident $wrapped:ident $pred:ident $out:ident $fitness:expr, $(
             $name:ident, $method:ident, $fn:ident, $ret:ident, $wrap:expr,
         )+) => {
             $(
                 impl $name for Options {
-                    fn $method(&self, predictors: &[f64], outcomes: &[f64]) -> $ret {
+                    fn $method(&self, $pred: &[f64], $out: &[f64]) -> $ret {
                         $wrap($fn(
                             #[inline(always)]
-                            |model| manhattan_distance(&$wrap(model), predictors, outcomes),
+                            |$model| { let $wrapped = $wrap($model); $fitness},
                             self.clone(),
                         ))
                     }
@@ -2638,6 +2654,8 @@ pub mod spiral {
         };
     }
     impl_estimator!(
+        _m model predictors outcomes manhattan_distance(&model, predictors, outcomes),
+        //
         LinearEstimator,
         model_linear,
         two_variable_optimization,
@@ -2661,6 +2679,9 @@ pub mod spiral {
         three_variable_optimization,
         LogisticCoefficients,
         estimators::wrap_logistic,
+    );
+    impl_estimator!(
+        model wrapped predictors outcomes estimators::trig_adjusted_manhattan_distance(&wrapped, model, predictors, outcomes),
         //
         SineEstimator,
         model_sine,
