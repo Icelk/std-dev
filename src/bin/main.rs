@@ -25,6 +25,9 @@ fn parse<T: FromStr>(s: &str) -> Option<T> {
         None
     }
 }
+fn parse_validator<T: FromStr>(err: &'static str) -> impl Fn(&str) -> Result<T, &'static str> {
+    move |v| parse(v).ok_or(err)
+}
 #[derive(Debug)]
 enum InputValue {
     Count(Vec<std_dev::Cluster>),
@@ -241,10 +244,9 @@ fn main() {
                         .long("degree")
                         .help("Degree of polynomial.")
                         .takes_value(true)
-                        .validator(|o| {
-                            o.parse::<usize>()
-                                .map_err(|_| "Degree must be an integer".to_owned())
-                        })
+                        .validator(parse_validator::<usize>(
+                            "Degree must be a positive integer",
+                        ))
                         .value_hint(ValueHint::Other),
                 )
                 .arg(
@@ -327,11 +329,11 @@ fn main() {
                         .requires("trig")
                         .default_value("1.0")
                         .validator(|v| {
-                            v.parse::<f64>()
-                                .map_err(|_| ())
-                                .and_then(|v| if v <= 0. { Err(()) } else { Ok(v) })
-                                .map_err(|_| "frequency needs to be a positive float".to_owned())
-                        }),
+                            parse::<f64>(v)
+                                .filter(|v| *v > 0.)
+                                .ok_or("frequency needs to be a positive float")
+                        })
+                        .value_hint(ValueHint::Other),
                 )
                 .arg(
                     Arg::new("ols")
