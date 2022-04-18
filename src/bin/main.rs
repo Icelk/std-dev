@@ -289,7 +289,10 @@ fn main() {
                         .help(
                             "Give the logistic regression the maximum value of the source. \
                             Say you know the population size and want to model the growth \
-                            of a pandemic, use this to supply the population size.",
+                            of a pandemic, use this to supply the population size.\n\
+                            \n\
+                            This gives much better performance than leaving it to the \
+                            algorithm to figure out the ceiling.",
                         )
                         .requires("logistic")
                         .validator(parse_validator::<f64>("logistic-ceiling requires a float"))
