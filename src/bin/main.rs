@@ -361,17 +361,21 @@ fn main() {
                     Arg::new("spiral_level")
                         .long("spiral-level")
                         .help(
-                            "Speed preset of spiral estimator. Lower are faster. \
-                            Currently, not all presets are implemented. \
-                            These may change at any time.",
+                            "Speed preset of spiral estimator. Lower are faster, \
+                            but increase the risk of invalid output. \
+                            You can expect a 2-4x decrease in performance \
+                            for each additional level. \
+                            Regressions with 3 variables require a higher level. \
+                            The performance of these presets may change at any time.",
                         )
                         .requires("required_spiral")
                         .takes_value(true)
-                        .possible_value("2")
-                        .possible_value("3")
-                        .possible_value("6")
-                        .possible_value("9")
-                        .default_value("6")
+                        .default_value("5")
+                        .validator(|v| {
+                            parse::<u8>(v)
+                                .filter(|v| (1..=9).contains(v))
+                                .ok_or("spiral-level has to be in range [1..=9]")
+                        })
                         .value_hint(ValueHint::Other),
                 )
                 .arg(
@@ -502,19 +506,10 @@ fn main() {
                 let mut y: Vec<f64> = y_iter.clone().collect();
 
                 let spiral_options = {
-                    match config
-                        .value_of("spiral_level")
-                        .expect("we've provided a default value")
-                    {
-                        // remember to update requirement checks in command building
-                        "2" => std_dev::regression::spiral::Options::faster(),
-                        "3" => std_dev::regression::spiral::Options::fast(),
-                        "6" => std_dev::regression::spiral::Options::new(),
-                        "9" => std_dev::regression::spiral::Options::precise(),
-                        _ => {
-                            unreachable!()
-                        }
-                    }
+                    let level = config
+                        .value_of_t::<u8>("spiral_level")
+                        .expect("we've provided a default value and validator");
+                    std_dev::regression::spiral::Options::new(level)
                 };
                 let trig_freq: f64 = config
                     .value_of_t("trig_freq")

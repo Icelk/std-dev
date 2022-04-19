@@ -2616,56 +2616,60 @@ pub mod spiral {
         pub turns: f64,
     }
     impl Options {
-        /// Default, with a good trade-off between speed and precision.
-        pub fn new() -> Self {
-            Self {
-                exponent_coefficient: 10.,
-                angle_coefficient: 0.07,
-                num_lockon: 16,
-                // these are odd values to avoid repeating the same angle on multiple turns
-                samples_per_rotation: 47.,
-                range: (-6. * TAU)..(6. * TAU),
-                turns: 16.,
+        /// Create a new set of options with good defaults.
+        ///
+        /// `level` is allowed to be in the range [1..=9].
+        /// Higher values are more "precise" - they take longer but are also way
+        /// (especially `level>4`) more likely to return good results.
+        ///
+        /// Expect a 2-4x increase in runtime per increment of `level`.
+        ///
+        /// # Panics
+        ///
+        /// Panics if `!(1..=9).contains(level)`.
+        pub fn new(level: u8) -> Self {
+            if !(1..=9).contains(&level) {
+                panic!("level of spiral::Options is out of bounds. Accepts 1..=9");
             }
-        }
-        /// About 4x faster than [`Self::new`].
-        pub fn fast() -> Self {
+            let level = level as usize - 1;
+            // have settings for all levels (1 through 9)
+            //
+            // These values are based on my intuition of the algorithm.
+            let num_lockon = [8, 8, 10, 12, 16, 16, 24, 32, 64];
+            let angle_coefficient = [0.23, 0.23, 0.15, 0.13, 0.11, 0.09, 0.07, 0.05, 0.03];
+            // these are odd values to avoid repeating the same angle on multiple turns
+            let samples_per_rotation = [15., 19., 29., 34., 38., 49., 71., 115., 217.];
+            let turns = [10., 12., 12., 14., 16., 16., 16., 16., 24.];
+            let range = [
+                -2.0..2.,
+                -2.0..4.,
+                -4.0..4.,
+                -4.0..6.,
+                -6.0..6.,
+                -6.0..6.,
+                -6.0..6.,
+                -6.0..8.,
+                -8.0..12.,
+            ];
+            let num_lockon = num_lockon[level];
+            let angle_coefficient = angle_coefficient[level];
+            let samples_per_rotation = samples_per_rotation[level];
+            let turns = turns[level];
+            let range = range[level].clone();
+            let range = (range.start * TAU)..(range.end * TAU);
             Self {
                 exponent_coefficient: 10.,
-                angle_coefficient: 0.13,
-                num_lockon: 8,
-                samples_per_rotation: 37.,
-                range: (-4. * TAU)..(4. * TAU),
-                turns: 16.,
-            }
-        }
-        /// About 4x faster than [`Self::fast`].
-        /// About 3x slower than analytical OLS solution (which provides way less flexibility).
-        pub fn faster() -> Self {
-            Self {
-                exponent_coefficient: 10.,
-                angle_coefficient: 0.23,
-                num_lockon: 8,
-                samples_per_rotation: 19.,
-                range: (-2. * TAU)..(4. * TAU),
-                turns: 12.,
-            }
-        }
-        /// About 4x slower than [`Self::new`].
-        pub fn precise() -> Self {
-            Self {
-                exponent_coefficient: 10.,
-                angle_coefficient: 0.05,
-                num_lockon: 32,
-                samples_per_rotation: 115.,
-                range: (-6. * TAU)..(6. * TAU),
-                turns: 16.,
+                angle_coefficient,
+                num_lockon,
+                samples_per_rotation,
+                range,
+                turns,
             }
         }
     }
     impl Default for Options {
         fn default() -> Self {
-            Self::new()
+            Self::new(5)
         }
     }
 
