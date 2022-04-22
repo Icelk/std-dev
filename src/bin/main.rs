@@ -141,21 +141,20 @@ fn input(
 #[cfg(feature = "regression")]
 fn print_regression(
     regression: &(impl std_dev::regression::Predictive + Display),
-    x: impl Iterator<Item = f64>,
-    y: impl Iterator<Item = f64> + Clone,
-    len: usize,
+    x: &[f64],
+    y: &[f64],
     precision: Option<usize>,
 ) {
     if let Some(precision) = precision {
         println!(
             "Determination: {:.1$}, Predicted equation: {regression:.1$}",
-            regression.determination(x, y, len),
+            regression.determination_slice(x, y),
             precision,
         );
     } else {
         println!(
             "Determination: {:.4}, Predicted equation: {regression}",
-            regression.determination(x, y, len),
+            regression.determination_slice(x, y),
         );
     }
 }
@@ -623,7 +622,7 @@ fn main() {
                     .value_of("precision")
                     .map(|s| s.parse::<usize>().expect("we check this using clap"));
 
-                print_regression(&model, x_iter.clone(), y_iter.clone(), len, p);
+                print_regression(&model, &x, &y, p);
 
                 if debug_performance {
                     println!("Regression analysis took {}µs.", now.elapsed().as_micros());

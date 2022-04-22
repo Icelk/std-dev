@@ -121,6 +121,7 @@ pub trait Determination: Predictive {
         let residuals = predictors
             .zip(outcomes.clone())
             .map(|(pred, out)| out - self.predict_outcome(pred));
+
         // Sum of the square of the residuals
         let res: f64 = residuals.map(|residual| residual * residual).sum();
         let tot: f64 = outcomes
@@ -130,7 +131,13 @@ pub trait Determination: Predictive {
             })
             .sum();
 
-        1.0 - (res / tot)
+        let mut diff = res / tot;
+
+        if diff.is_nan() {
+            diff = 0.
+        };
+
+        1.0 - diff
     }
     /// Convenience method for [`Determination::determination`] when using slices.
     fn determination_slice(&self, predictors: &[f64], outcomes: &[f64]) -> f64 {
