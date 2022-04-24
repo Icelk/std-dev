@@ -54,8 +54,8 @@ and enabling those you need.
 Documentation of the main branch can be found at [doc.icelk.dev](https://doc.icelk.dev/std-dev/std_dev/).
 
 To document with information on which cargo features enables the code,
-set the environment variable `RUSTFLAGS` AND `RUSTDOCFLAGS` to `--cfg docsrs`
-(e.g. in Fish `set -x RUSTFLAGS "--cfg docsrs"; set -x RUSTDOCFLAGS "--cfg docsrs"`)
+set the environment variable `RUSTDOCFLAGS` to `--cfg docsrs`
+(e.g. in Fish `set -x RUSTDOCFLAGS "--cfg docsrs"`)
 and then run `cargo +nightly doc`.
 
 # Performance
