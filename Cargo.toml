@@ -81,6 +81,9 @@ pretty = ["bin", "atty", "colored"]
 # Shell completion output
 completion = ["clap_autocomplete"]
 
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+
 # Build with `--profile production`
 [profile.production]
 inherits = "release"
