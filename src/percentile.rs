@@ -448,10 +448,13 @@ pub fn median<T: Ord + Clone>(values: &mut [T]) -> MeanValue<T> {
 /// Low level function used by this module.
 fn quickselect<T: Clone>(
     values: &mut [T],
-    k: usize,
+    mut k: usize,
     mut pivot_fn: impl FnMut(&mut [T]) -> Cow<'_, T>,
     mut compare: impl FnMut(&T, &T) -> cmp::Ordering,
 ) -> &T {
+    if k >= values.len() {
+        k = values.len() - 1;
+    }
     if values.len() == 1 {
         assert_eq!(k, 0);
         return &values[0];
