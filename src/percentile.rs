@@ -199,6 +199,15 @@ impl Fraction {
                 .flat_map(|(num, count)| std::iter::repeat(*num).take(*count))
         }
 
+        if self.numerator == 0 {
+            return Self {
+                numerator: 0,
+                denominator: 1,
+            };
+        }
+        if self.denominator == 0 {
+            panic!("denominator is 0");
+        }
         // +1 for truncation and precision loss.
         let limit = (self.numerator.max(self.denominator) as f64).sqrt() as usize + 1;
         let sieve = primal_sieve::Sieve::new(limit);
@@ -224,6 +233,10 @@ impl Fraction {
 impl OrderedListIndex for Fraction {
     fn index(&self, len: usize) -> MeanValue<usize> {
         assert!(self.numerator <= self.denominator);
+        fn assert_not_zero(denominator: usize) {
+            assert_ne!(denominator, 0);
+        }
+        assert_not_zero(self.denominator);
         fn power_of_two(me: Fraction, len: usize) -> MeanValue<usize> {
             if me.denominator == 2 {
                 if len % 2 == 0 {
@@ -249,7 +262,9 @@ impl OrderedListIndex for Fraction {
 
         // exception for when self.denominator.is_power_of_two(), as we want quartiles and median
         // to be the mean of two values sometimes.
-        if self.denominator.is_power_of_two() {
+        if self.denominator == 1 {
+            MeanValue::Single(self.numerator)
+        } else if self.denominator.is_power_of_two() {
             power_of_two(*self, len)
         } else {
             // ceil(len * percentile) - 1
