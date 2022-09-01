@@ -283,8 +283,10 @@ pub mod models {
                 }
                 _ => {
                     let mut out = 0.0;
-                    for (degree, coefficient) in self.coefficients.iter().copied().enumerate() {
-                        out += predictor.powi(degree as i32) * coefficient;
+                    let mut pred = 1.;
+                    for coefficient in self.coefficients.iter().copied() {
+                        out += pred * coefficient;
+                        pred *= predictor;
                     }
                     out
                 }
