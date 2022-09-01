@@ -276,8 +276,9 @@ pub mod models {
                         + self.coefficients[0]
                 }
                 4 => {
-                    self.coefficients[3] * predictor * predictor * predictor
-                        + self.coefficients[2] * predictor * predictor
+                    let p2 = predictor * predictor;
+                    self.coefficients[3] * predictor * p2
+                        + self.coefficients[2] * p2
                         + self.coefficients[1] * predictor
                         + self.coefficients[0]
                 }
@@ -2986,6 +2987,10 @@ pub mod gradient_descent {
         pub factor_decrease: f64,
         pub rough_max_sign_changes: usize,
         pub rough_slope_reduction_goal: f64,
+        pub rough_iterations_base: usize,
+        pub rough_iterations_per_degree: usize,
+        pub fine_iterations_base: usize,
+        pub fine_iterations_per_degree: usize,
     }
     impl Default for Options {
         fn default() -> Self {
@@ -2994,6 +2999,10 @@ pub mod gradient_descent {
                 factor_decrease: 1.2,
                 rough_max_sign_changes: 100,
                 rough_slope_reduction_goal: 4.,
+                rough_iterations_base: 64,
+                rough_iterations_per_degree: 13,
+                fine_iterations_base: 4,
+                fine_iterations_per_degree: 3,
             }
         }
     }
@@ -3026,8 +3035,9 @@ pub mod gradient_descent {
                 (y1 - y2) / dx
             };
 
-            let rough_iterations = n * 16 + 64;
-            let fine_iterations = 4 + 3 * n;
+            let rough_iterations =
+                self.rough_iterations_base + self.rough_iterations_per_degree * n;
+            let fine_iterations = self.fine_iterations_base + self.fine_iterations_per_degree * n;
 
             for _ in 0..rough_iterations {
                 for i in 0..n {
