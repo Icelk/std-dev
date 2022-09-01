@@ -10,7 +10,8 @@ use std::str::FromStr;
 use std::time::Instant;
 use std_dev::regression::{
     CosecantEstimator, CosineEstimator, CotangentEstimator, ExponentialEstimator,
-    LogisticEstimator, PowerEstimator, SecantEstimator, SineEstimator, TangentEstimator,
+    GradienDescentOptions, LogisticEstimator, PowerEstimator, SecantEstimator, SineEstimator,
+    TangentEstimator,
 };
 #[cfg(feature = "regression")]
 use std_dev::regression::{Determination, LinearEstimator, PolynomialEstimator, Predictive};
@@ -358,6 +359,15 @@ fn main() {
                     A good result isn't guaranteed. Linear time complexity.",
                 ))
                 .arg(
+                    Arg::new("descent")
+                        .long("gradient-descent")
+                        .short('g')
+                        .help(
+                            "Use the gradient descent estimator instead of OLS for all models. \
+                            A good result is guaranteed. Linear time complexity.",
+                        ),
+                )
+                .arg(
                     Arg::new("spiral_level")
                         .long("spiral-level")
                         .help(
@@ -518,6 +528,8 @@ fn main() {
                 let linear_estimator = {
                     if config.is_present("theil_sen") {
                         std_dev::regression::LinearTheilSen.boxed_linear()
+                    } else if config.is_present("descent") {
+                        GradienDescentOptions::default().boxed_linear()
                     } else if config.is_present("spiral") {
                         spiral_options.clone().boxed_linear()
                     } else {
@@ -595,6 +607,8 @@ fn main() {
                         let estimator = {
                             if config.is_present("theil_sen") {
                                 std_dev::regression::PolynomialTheilSen.boxed_polynomial()
+                            } else if config.is_present("descent") {
+                                GradienDescentOptions::default().boxed_polynomial()
                             } else if config.is_present("spiral") {
                                 if !(1..=2).contains(&degree) {
                                     spiral_polynomial_degree_error.exit();

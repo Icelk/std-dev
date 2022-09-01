@@ -46,6 +46,7 @@ pub use models::*;
 
 #[cfg(feature = "ols")]
 pub use derived::{exponential_ols, power_ols};
+pub use gradient_descent::Options as GradienDescentOptions;
 #[cfg(feature = "ols")]
 pub use ols::OlsEstimator;
 pub use spiral::estimators::*;
@@ -2280,6 +2281,7 @@ pub mod theil_sen {
             assert_eq!(permutations1, permutations2);
         }
         #[test]
+        #[cfg(feature = "rand")]
         fn permutations_eq_2() {
             use rand::Rng;
 
@@ -2944,6 +2946,187 @@ pub mod spiral {
                 ),
                 self.ceiling,
             )
+        }
+    }
+}
+
+#[allow(missing_docs)]
+pub mod gradient_descent {
+    use super::*;
+    struct BorrowedPolynomial<'a>(&'a [f64]);
+    impl<'a> Predictive for BorrowedPolynomial<'a> {
+        #[inline(always)]
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            match self.0.len() {
+                0 => 0.,
+                1 => self.0[0],
+                2 => self.0[1] * predictor + self.0[0],
+                3 => self.0[2] * predictor * predictor + self.0[1] * predictor + self.0[0],
+                4 => {
+                    let p2 = predictor * predictor;
+                    self.0[3] * p2 * predictor + self.0[2] * p2 + self.0[1] * predictor + self.0[0]
+                }
+                _ => {
+                    let mut out = 0.0;
+                    let mut pred = 1.;
+                    for coefficient in self.0.iter().copied() {
+                        out += pred * coefficient;
+                        pred *= predictor;
+                    }
+                    out
+                }
+            }
+        }
+    }
+
+    pub struct Options {
+        pub learn_rate: f64,
+        pub factor_decrease: f64,
+        pub rough_max_sign_changes: usize,
+        pub rough_slope_reduction_goal: f64,
+    }
+    impl Default for Options {
+        fn default() -> Self {
+            Self {
+                learn_rate: 50.,
+                factor_decrease: 1.2,
+                rough_max_sign_changes: 100,
+                rough_slope_reduction_goal: 4.,
+            }
+        }
+    }
+    #[inline(always)]
+    fn adjusted_log(n: f64) -> f64 {
+        let n = n / 8.;
+        let ln = match n.partial_cmp(&0.) {
+            Some(std::cmp::Ordering::Less) => -((-n + 1.).ln()),
+            Some(std::cmp::Ordering::Greater) => (n + 1.).ln(),
+            _ => 0.,
+        };
+        ln * 8.
+    }
+    impl Options {
+        fn polynomial_optimization(
+            &self,
+            n: usize,
+            target_accuracy: f64,
+            fitness_function: impl Fn(&[f64]) -> f64,
+        ) -> Vec<f64> {
+            let mut values: Vec<f64> = std::iter::repeat(0.).take(n).collect();
+            let mut factors: Vec<f64> = std::iter::repeat(1.).take(n).collect();
+            let dx = (target_accuracy / 2.).max(1e-12);
+
+            let get_slope = |dx: f64, i: usize, values: &mut [f64]| {
+                let y1 = fitness_function(values);
+                values[i] += dx;
+                let y2 = fitness_function(values);
+                values[i] -= dx;
+                (y1 - y2) / dx
+            };
+
+            let rough_iterations = n * 16 + 64;
+            let fine_iterations = 4 + 3 * n;
+
+            for _ in 0..rough_iterations {
+                for i in 0..n {
+                    let first_slope = get_slope(dx, i, &mut values);
+                    let mut slope_positive = first_slope.is_sign_positive();
+                    let mut factor = factors[i];
+                    let mut sign_changes = 0;
+                    loop {
+                        let slope = get_slope(dx, i, &mut values);
+                        if slope.is_sign_positive() != slope_positive {
+                            slope_positive = !slope_positive;
+                            factor /= self.factor_decrease;
+                            sign_changes += 1;
+                        }
+                        values[i] += adjusted_log(slope) * self.learn_rate * factor;
+                        // println!(
+                        // "Slope {slope} add {} log {}",
+                        // adjusted_log(slope) * self.learn_rate,
+                        // adjusted_log(slope),
+                        // );
+                        if slope.abs() < first_slope.abs() / self.rough_slope_reduction_goal
+                            || sign_changes > self.rough_max_sign_changes
+                        {
+                            break;
+                        }
+                    }
+                    factors[i] = factor;
+                }
+            }
+
+            for _ in 0..fine_iterations {
+                for i in 0..n {
+                    let mut factor = factors[i];
+                    let mut slope_positive = get_slope(dx, i, &mut values).is_sign_positive();
+                    loop {
+                        let slope = get_slope(dx, i, &mut values);
+                        if slope.is_sign_positive() != slope_positive {
+                            slope_positive = !slope_positive;
+                            factor /= self.factor_decrease;
+                        }
+                        values[i] += adjusted_log(slope) * self.learn_rate * factor;
+                        // println!(
+                        // "Slope {slope} add {} log {} {factor}",
+                        // adjusted_log(slope) * self.learn_rate * factor,
+                        // adjusted_log(slope),
+                        // );
+                        if slope.abs() < target_accuracy {
+                            break;
+                        }
+                    }
+                    factors[i] = factor;
+                }
+            }
+
+            values
+        }
+    }
+    impl PolynomialEstimator for Options {
+        fn model_polynomial(
+            &self,
+            predictors: &[f64],
+            outcomes: &[f64],
+            degree: usize,
+        ) -> PolynomialCoefficients {
+            PolynomialCoefficients::from(self.polynomial_optimization(degree + 1, 1e-6, |v| {
+                -BorrowedPolynomial(v).determination_slice(predictors, outcomes)
+            }))
+        }
+    }
+    impl LinearEstimator for Options {
+        fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+            let v = self.polynomial_optimization(2, 1e-8, |v| {
+                -LinearCoefficients { k: v[0], m: v[1] }.determination_slice(predictors, outcomes)
+            });
+            LinearCoefficients { k: v[0], m: v[1] }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn one_variable() {
+            let v = Options::default()
+                .polynomial_optimization(1, 1e-12, |values| (values[0] - 42.4242).powi(2));
+            println!("{v:?}");
+        }
+        #[test]
+        fn two_variable_regression() {
+            let x = [1.3, 4.7, 9.4];
+            let y = [4., 5.3, 6.7];
+            let v = Options::default().polynomial_optimization(2, 1e-6, |values| {
+                -LinearCoefficients {
+                    k: values[0],
+                    m: values[1],
+                }
+                .determination_slice(&x, &y)
+            });
+            let coeffs = LinearCoefficients { k: v[0], m: v[1] };
+            println!("{coeffs} R² {}", coeffs.determination_slice(&x, &y));
         }
     }
 }
