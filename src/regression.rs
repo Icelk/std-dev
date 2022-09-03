@@ -46,7 +46,10 @@ pub use models::*;
 
 #[cfg(feature = "ols")]
 pub use derived::{exponential_ols, power_ols};
-pub use gradient_descent::Options as GradienDescentOptions;
+pub use gradient_descent::{
+    ParallelOptions as GradientDescentParallelOptions,
+    SimultaneousOptions as GradientDescentSimultaneousOptions,
+};
 #[cfg(feature = "ols")]
 pub use ols::OlsEstimator;
 pub use spiral::estimators::*;
@@ -2702,7 +2705,7 @@ pub mod spiral {
             error += length;
         }
 
-        0.0 - error
+        -error
     }
 
     /// Estimators based on the general spiral method.
@@ -2956,6 +2959,7 @@ pub mod spiral {
 #[allow(missing_docs)]
 pub mod gradient_descent {
     use super::*;
+
     struct BorrowedPolynomial<'a>(&'a [f64]);
     impl<'a> Predictive for BorrowedPolynomial<'a> {
         #[inline(always)]
@@ -2982,7 +2986,7 @@ pub mod gradient_descent {
         }
     }
 
-    pub struct Options {
+    pub struct ParallelOptions {
         pub learn_rate: f64,
         pub factor_decrease: f64,
         pub rough_max_sign_changes: usize,
@@ -2992,7 +2996,7 @@ pub mod gradient_descent {
         pub fine_iterations_base: usize,
         pub fine_iterations_per_degree: usize,
     }
-    impl Default for Options {
+    impl Default for ParallelOptions {
         fn default() -> Self {
             Self {
                 learn_rate: 50.,
@@ -3006,17 +3010,33 @@ pub mod gradient_descent {
             }
         }
     }
-    #[inline(always)]
-    fn adjusted_log(n: f64) -> f64 {
-        let n = n / 8.;
-        let ln = match n.partial_cmp(&0.) {
-            Some(std::cmp::Ordering::Less) => -((-n + 1.).ln()),
-            Some(std::cmp::Ordering::Greater) => (n + 1.).ln(),
-            _ => 0.,
-        };
-        ln * 8.
+    pub struct SimultaneousOptions {
+        pub learn_rate: f64,
+        pub factor_decrease: f64,
+        pub factor_increase: f64,
+        pub target_accuracy: f64,
     }
-    impl Options {
+    impl SimultaneousOptions {
+        pub fn new(target_accuracy: f64) -> Self {
+            Self {
+                learn_rate: 0.0001,
+                factor_decrease: 1.5,
+                factor_increase: 1.8,
+                target_accuracy,
+            }
+        }
+    }
+    impl ParallelOptions {
+        #[inline(always)]
+        fn adjusted_slope(n: f64) -> f64 {
+            let n = n / 8.;
+            let ln = match n.partial_cmp(&0.) {
+                Some(std::cmp::Ordering::Less) => -((-n + 1.).ln()),
+                Some(std::cmp::Ordering::Greater) => (n + 1.).ln(),
+                _ => 0.,
+            };
+            ln * 8.
+        }
         fn polynomial_optimization(
             &self,
             n: usize,
@@ -3025,7 +3045,7 @@ pub mod gradient_descent {
         ) -> Vec<f64> {
             let mut values: Vec<f64> = std::iter::repeat(0.).take(n).collect();
             let mut factors: Vec<f64> = std::iter::repeat(1.).take(n).collect();
-            let dx = (target_accuracy / 2.).max(1e-12);
+            let dx = (target_accuracy / 2.).max(1e-11);
 
             let get_slope = |dx: f64, i: usize, values: &mut [f64]| {
                 let y1 = fitness_function(values);
@@ -3052,17 +3072,19 @@ pub mod gradient_descent {
                             factor /= self.factor_decrease;
                             sign_changes += 1;
                         }
-                        values[i] += adjusted_log(slope) * self.learn_rate * factor;
+                        values[i] += Self::adjusted_slope(slope) * self.learn_rate * factor;
                         // println!(
-                        // "Slope {slope} add {} log {}",
-                        // adjusted_log(slope) * self.learn_rate,
-                        // adjusted_log(slope),
+                        // "Slope {slope} add {} log {} factor {factor}",
+                        // adjusted_slope(slope) * self.learn_rate * factor,
+                        // adjusted_slope(slope),
                         // );
                         if slope.abs() < first_slope.abs() / self.rough_slope_reduction_goal
                             || sign_changes > self.rough_max_sign_changes
+                            || slope.abs() < target_accuracy * 2.
                         {
                             break;
                         }
+                        // `TODO`: if all factors are under target, return values
                     }
                     factors[i] = factor;
                 }
@@ -3078,15 +3100,16 @@ pub mod gradient_descent {
                             slope_positive = !slope_positive;
                             factor /= self.factor_decrease;
                         }
-                        values[i] += adjusted_log(slope) * self.learn_rate * factor;
+                        values[i] += Self::adjusted_slope(slope) * self.learn_rate * factor;
                         // println!(
                         // "Slope {slope} add {} log {} {factor}",
-                        // adjusted_log(slope) * self.learn_rate * factor,
-                        // adjusted_log(slope),
+                        // adjusted_slope(slope) * self.learn_rate * factor,
+                        // adjusted_slope(slope),
                         // );
                         if slope.abs() < target_accuracy {
                             break;
                         }
+                        // `TODO`: if all factors are under target, return values
                     }
                     factors[i] = factor;
                 }
@@ -3095,7 +3118,88 @@ pub mod gradient_descent {
             values
         }
     }
-    impl PolynomialEstimator for Options {
+    impl SimultaneousOptions {
+        #[inline(always)]
+        fn adjusted_slope(n: f64) -> f64 {
+            let n = n / 0.1;
+            let ln = match n.partial_cmp(&0.) {
+                Some(std::cmp::Ordering::Less) => -((-n + 1.).ln()),
+                Some(std::cmp::Ordering::Greater) => (n + 1.).ln(),
+                _ => 0.,
+            };
+            ln * 0.1
+        }
+        fn polynomial_optimization(
+            &self,
+            n: usize,
+            fitness_function: impl Fn(&[f64]) -> f64,
+        ) -> Vec<f64> {
+            let mut values: Vec<f64> = std::iter::repeat(0.).take(n).collect();
+            let mut factors: Vec<f64> = std::iter::repeat(1.).take(n).collect();
+            let mut slopes: Vec<f64> = std::iter::repeat(0.).take(n).collect();
+            let dx = 1e-11;
+
+            let get_slope = |dx: f64, i: usize, values: &mut [f64]| {
+                let y1 = fitness_function(values);
+                values[i] += dx;
+                let y2 = fitness_function(values);
+                values[i] -= dx;
+                (y1 - y2) / dx
+            };
+
+            let mut i = 0_usize;
+            loop {
+                i += 1;
+                if i > 1_000_000 {
+                    break;
+                }
+                for i in 0..n {
+                    let slope = get_slope(dx, i, &mut values);
+                    if slope.is_sign_positive() != slopes[i].is_sign_positive() {
+                        if slope.abs() > slopes[i].abs() * 4.
+                            && self.factor_decrease * self.factor_decrease
+                                < (slope.abs() / slopes[i].abs())
+                        {
+                            factors[i] /= self
+                                .factor_decrease
+                                .max((slope.abs() / slopes[i].abs()).sqrt());
+                        } else {
+                            factors[i] /= self.factor_decrease;
+                        }
+                        factors[i] = factors[i].max(1e-6);
+                    } else {
+                        factors[i] *= self.factor_increase;
+                    }
+                    slopes[i] = slope;
+                }
+
+                for i in 0..n {
+                    let factor = factors[i];
+                    let slope = slopes[i];
+                    values[i] += Self::adjusted_slope(slope) * self.learn_rate * factor;
+                    // println!(
+                    // "{i} slope {slope} add {} {factor}",
+                    // adjusted_log(slope) * self.learn_rate * factor,
+                    // );
+                }
+                if i % 20 == 0 {
+                    let mut v = 0.;
+                    let mut factor = 1.;
+                    for slope in &slopes {
+                        v += slope.abs() * factor;
+                        factor /= 5.0;
+                    }
+                    // println!("{v} {slopes:?}");
+                    if v < self.target_accuracy {
+                        break;
+                    }
+                }
+            }
+            values
+        }
+    }
+
+    impl PolynomialEstimator for ParallelOptions {
         fn model_polynomial(
             &self,
             predictors: &[f64],
@@ -3107,9 +3211,29 @@ pub mod gradient_descent {
             }))
         }
     }
-    impl LinearEstimator for Options {
+    impl LinearEstimator for ParallelOptions {
         fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
             let v = self.polynomial_optimization(2, 1e-8, |v| {
+                -LinearCoefficients { k: v[0], m: v[1] }.determination_slice(predictors, outcomes)
+            });
+            LinearCoefficients { k: v[0], m: v[1] }
+        }
+    }
+    impl PolynomialEstimator for SimultaneousOptions {
+        fn model_polynomial(
+            &self,
+            predictors: &[f64],
+            outcomes: &[f64],
+            degree: usize,
+        ) -> PolynomialCoefficients {
+            PolynomialCoefficients::from(self.polynomial_optimization(degree + 1, |v| {
+                -BorrowedPolynomial(v).determination_slice(predictors, outcomes)
+            }))
+        }
+    }
+    impl LinearEstimator for SimultaneousOptions {
+        fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+            let v = self.polynomial_optimization(2, |v| {
                 -LinearCoefficients { k: v[0], m: v[1] }.determination_slice(predictors, outcomes)
             });
             LinearCoefficients { k: v[0], m: v[1] }
@@ -3122,7 +3246,7 @@ pub mod gradient_descent {
 
         #[test]
         fn one_variable() {
-            let v = Options::default()
+            let v = ParallelOptions::default()
                 .polynomial_optimization(1, 1e-12, |values| (values[0] - 42.4242).powi(2));
             println!("{v:?}");
         }
@@ -3130,7 +3254,7 @@ pub mod gradient_descent {
         fn two_variable_regression() {
             let x = [1.3, 4.7, 9.4];
             let y = [4., 5.3, 6.7];
-            let v = Options::default().polynomial_optimization(2, 1e-6, |values| {
+            let v = ParallelOptions::default().polynomial_optimization(2, 1e-6, |values| {
                 -LinearCoefficients {
                     k: values[0],
                     m: values[1],

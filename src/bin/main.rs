@@ -10,8 +10,8 @@ use std::str::FromStr;
 use std::time::Instant;
 use std_dev::regression::{
     CosecantEstimator, CosineEstimator, CotangentEstimator, ExponentialEstimator,
-    GradienDescentOptions, LogisticEstimator, PowerEstimator, SecantEstimator, SineEstimator,
-    TangentEstimator,
+    GradientDescentParallelOptions, GradientDescentSimultaneousOptions, LogisticEstimator,
+    PowerEstimator, SecantEstimator, SineEstimator, TangentEstimator,
 };
 #[cfg(feature = "regression")]
 use std_dev::regression::{Determination, LinearEstimator, PolynomialEstimator, Predictive};
@@ -82,7 +82,7 @@ fn input(
                 break;
             }
             let mut current = Vec::with_capacity(2);
-            for segment in line.split(',').flat_map(|s| s.trim().split_whitespace()) {
+            for segment in line.split(',').flat_map(|s| s.split_whitespace()) {
                 let f = parse(segment.trim());
                 if let Some(f) = f {
                     current.push(f)
@@ -368,6 +368,17 @@ fn main() {
                         ),
                 )
                 .arg(
+                    Arg::new("simultaneous")
+                        .long("gradient-descent-descent")
+                        .short('u')
+                        .help(
+                            "Use the gradient descent estimator instead of OLS for all models. \
+                            The simultaneous estimator is better at regressions where multiple \
+                            variables affect the quality together. \
+                            Linear time complexity.",
+                        ),
+                )
+                .arg(
                     Arg::new("spiral_level")
                         .long("spiral-level")
                         .help(
@@ -385,6 +396,25 @@ fn main() {
                             parse::<u8>(v)
                                 .filter(|v| (1..=9).contains(v))
                                 .ok_or("spiral-level has to be in range [1..=9]")
+                        })
+                        .value_hint(ValueHint::Other),
+                )
+                .arg(
+                    Arg::new("simultaneous_level")
+                        .long("simultaneous-accuracy")
+                        .help(
+                            "Accuracy preset of gradient descent simultaneous \
+                            estimator. Generally, when many variables are \
+                            optimized (e.g. >8 degree polynomial), \
+                            the accuracy needs to be more fine.",
+                        )
+                        .requires("simultaneous")
+                        .takes_value(true)
+                        .default_value("1e-4")
+                        .validator(|v| {
+                            parse::<f64>(v)
+                                .filter(|v| v.is_finite())
+                                .ok_or("simultaneous-accuracy needs to be a number")
                         })
                         .value_hint(ValueHint::Other),
                 )
@@ -529,7 +559,9 @@ fn main() {
                     if config.is_present("theil_sen") {
                         std_dev::regression::LinearTheilSen.boxed_linear()
                     } else if config.is_present("descent") {
-                        GradienDescentOptions::default().boxed_linear()
+                        GradientDescentParallelOptions::default().boxed_linear()
+                    } else if config.is_present("simultaneous") {
+                        GradientDescentSimultaneousOptions::new(1e-6).boxed_linear()
                     } else if config.is_present("spiral") {
                         spiral_options.clone().boxed_linear()
                     } else {
@@ -608,7 +640,13 @@ fn main() {
                             if config.is_present("theil_sen") {
                                 std_dev::regression::PolynomialTheilSen.boxed_polynomial()
                             } else if config.is_present("descent") {
-                                GradienDescentOptions::default().boxed_polynomial()
+                                GradientDescentParallelOptions::default().boxed_polynomial()
+                            } else if config.is_present("simultaneous") {
+                                let accuracy = config
+                                    .value_of_t("simultaneous_level")
+                                    .expect("we provided a default value and checked the input");
+
+                                GradientDescentSimultaneousOptions::new(accuracy).boxed_polynomial()
                             } else if config.is_present("spiral") {
                                 if !(1..=2).contains(&degree) {
                                     spiral_polynomial_degree_error.exit();
@@ -640,7 +678,12 @@ fn main() {
                 print_regression(&model, x_iter.clone(), y_iter.clone(), len, p);
 
                 if debug_performance {
-                    println!("Regression analysis took {}µs.", now.elapsed().as_micros());
+                    let elapsed = now.elapsed().as_micros();
+                    if elapsed > 50_000 {
+                        println!("Regression analysis took {}ms.", elapsed / 1000);
+                    } else {
+                        println!("Regression analysis took {}µs.", elapsed);
+                    }
                 }
 
                 if config.is_present("plot") {
