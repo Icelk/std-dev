@@ -3037,7 +3037,7 @@ pub mod gradient_descent {
             };
             ln * 8.
         }
-        fn polynomial_optimization(
+        pub fn polynomial_optimization(
             &self,
             n: usize,
             target_accuracy: f64,
@@ -3129,7 +3129,7 @@ pub mod gradient_descent {
             };
             ln * 0.1
         }
-        fn polynomial_optimization(
+        pub fn polynomial_optimization(
             &self,
             n: usize,
             fitness_function: impl Fn(&[f64]) -> f64,
