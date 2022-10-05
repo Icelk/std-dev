@@ -1,7 +1,6 @@
 use clap::{Arg, ValueHint};
 use std::env;
-#[cfg(feature = "regression")]
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 #[cfg(feature = "regression")]
 use std::io::Write;
 use std::io::{stdin, BufRead};
@@ -25,9 +24,6 @@ fn parse<T: FromStr>(s: &str) -> Option<T> {
         eprintln!("Failed to parse value {s:?}");
         None
     }
-}
-fn parse_validator<T: FromStr>(err: &'static str) -> impl Fn(&str) -> Result<T, &'static str> {
-    move |v| parse(v).ok_or(err)
 }
 #[derive(Debug)]
 enum InputValue {
@@ -194,11 +190,8 @@ fn main() {
                     The determination will be 4 decimal places long. \
                     When this is set, all numbers are rounded.",
                 )
-                .takes_value(true)
-                .validator(|v| {
-                    v.parse::<usize>()
-                        .map_err(|_| "precision needs to be a positive integer".to_owned())
-                })
+                .num_args(1)
+                .value_parser(clap::value_parser!(usize))
                 .value_hint(ValueHint::Other),
         );
 
@@ -244,10 +237,8 @@ fn main() {
                         .short('d')
                         .long("degree")
                         .help("Degree of polynomial.")
-                        .takes_value(true)
-                        .validator(parse_validator::<usize>(
-                            "Degree must be a positive integer",
-                        ))
+                        .num_args(1)
+                        .value_parser(clap::value_parser!(usize))
                         .value_hint(ValueHint::Other),
                 )
                 .arg(
@@ -296,7 +287,9 @@ fn main() {
                             algorithm to figure out the ceiling.",
                         )
                         .requires("logistic")
-                        .validator(parse_validator::<f64>("logistic-ceiling requires a float"))
+                        .value_parser(|s: &str| {
+                            parse::<f64>(s).ok_or("logistic-ceiling requites a float")
+                        })
                         .value_hint(ValueHint::Other),
                 )
                 .group(
@@ -338,7 +331,7 @@ fn main() {
                         .help("Set the limit for frequency of the fitted trigonometric function.")
                         .requires("trig")
                         .default_value("1.0")
-                        .validator(|v| {
+                        .value_parser(|v: &str| {
                             parse::<f64>(v)
                                 .filter(|v| *v > 0.)
                                 .ok_or("frequency needs to be a positive float")
@@ -390,9 +383,9 @@ fn main() {
                             The performance of these presets may change at any time.",
                         )
                         .requires("required_spiral")
-                        .takes_value(true)
+                        .num_args(1)
                         .default_value("5")
-                        .validator(|v| {
+                        .value_parser(|v: &str| {
                             parse::<u8>(v)
                                 .filter(|v| (1..=9).contains(v))
                                 .ok_or("spiral-level has to be in range [1..=9]")
@@ -409,9 +402,9 @@ fn main() {
                             the accuracy needs to be more fine.",
                         )
                         .requires("simultaneous")
-                        .takes_value(true)
+                        .num_args(1)
                         .default_value("1e-4")
-                        .validator(|v| {
+                        .value_parser(|v: &str| {
                             parse::<f64>(v)
                                 .filter(|v| v.is_finite())
                                 .ok_or("simultaneous-accuracy needs to be a number")
@@ -427,7 +420,7 @@ fn main() {
                     Arg::new("plot_filename")
                         .long("plot-out")
                         .help("File name (without extension) for SVG plot.")
-                        .takes_value(true)
+                        .num_args(1)
                         .requires("plot")
                         .value_hint(ValueHint::FilePath),
                 )
@@ -438,7 +431,7 @@ fn main() {
                             "Count of sample points when drawing the curve. \
                               Always set to 2 for linear regressions.",
                         )
-                        .takes_value(true)
+                        .num_args(1)
                         .requires("plot")
                         .value_hint(ValueHint::Other),
                 )
@@ -446,7 +439,7 @@ fn main() {
                     Arg::new("plot_title")
                         .long("plot-title")
                         .help("Title of plot.")
-                        .takes_value(true)
+                        .num_args(1)
                         .requires("plot")
                         .value_hint(ValueHint::Other),
                 )
@@ -454,7 +447,7 @@ fn main() {
                     Arg::new("plot_x_axis")
                         .long("plot-axis-x")
                         .help("Name of x axis of plot (the first column of data).")
-                        .takes_value(true)
+                        .num_args(1)
                         .requires("plot")
                         .value_hint(ValueHint::Other),
                 )
@@ -462,7 +455,7 @@ fn main() {
                     Arg::new("plot_y_axis")
                         .long("plot-axis-y")
                         .help("Name of y axis of plot (the second column of data).")
-                        .takes_value(true)
+                        .num_args(1)
                         .requires("plot")
                         .value_hint(ValueHint::Other),
                 ),
@@ -471,7 +464,7 @@ fn main() {
 
     #[cfg(feature = "regression")]
     let spiral_polynomial_degree_error = app.error(
-        clap::ErrorKind::InvalidValue,
+        clap::error::ErrorKind::InvalidValue,
         "spiral only supports polynomials of degree 1 & 2",
     );
 
@@ -492,7 +485,7 @@ fn main() {
     }
 
     let debug_performance = env::var("DEBUG_PERFORMANCE").ok().map_or_else(
-        || matches.is_present("debug-performance"),
+        || matches.contains_id("debug-performance"),
         |s| !s.trim().is_empty(),
     );
 
@@ -505,7 +498,7 @@ fn main() {
 
     'main: loop {
         let multiline = {
-            matches.is_present("multiline")
+            matches.contains_id("multiline")
                 || matches!(matches.subcommand_name(), Some("regression"))
         };
         let input = if let Some(i) = input(tty, debug_performance, multiline, &mut last_prompt) {
@@ -546,23 +539,23 @@ fn main() {
                 let mut y: Vec<f64> = y_iter.clone().collect();
 
                 let spiral_options = {
-                    let level = config
-                        .value_of_t::<u8>("spiral_level")
+                    let level = *config
+                        .get_one::<u8>("spiral_level")
                         .expect("we've provided a default value and validator");
                     std_dev::regression::spiral::Options::new(level)
                 };
-                let trig_freq: f64 = config
-                    .value_of_t("trig_freq")
+                let trig_freq: f64 = *config
+                    .get_one("trig_freq")
                     .expect("we provided a default value and have a validator");
 
                 let linear_estimator = {
-                    if config.is_present("theil_sen") {
+                    if config.contains_id("theil_sen") {
                         std_dev::regression::LinearTheilSen.boxed_linear()
-                    } else if config.is_present("descent") {
+                    } else if config.contains_id("descent") {
                         GradientDescentParallelOptions::default().boxed_linear()
-                    } else if config.is_present("simultaneous") {
+                    } else if config.contains_id("simultaneous") {
                         GradientDescentSimultaneousOptions::new(1e-6).boxed_linear()
-                    } else if config.is_present("spiral") {
+                    } else if config.contains_id("spiral") {
                         spiral_options.clone().boxed_linear()
                     } else {
                         #[cfg(feature = "ols")]
@@ -579,15 +572,15 @@ fn main() {
 
                 let now = Instant::now();
 
-                let model = if config.is_present("power") {
-                    if config.is_present("spiral") {
+                let model = if config.contains_id("power") {
+                    if config.contains_id("spiral") {
                         spiral_options.model_power(&x, &y).boxed()
                     } else {
                         std_dev::regression::derived::power(&mut x, &mut y, &&*linear_estimator)
                             .boxed()
                     }
-                } else if config.is_present("exponential") {
-                    if config.is_present("spiral") {
+                } else if config.contains_id("exponential") {
+                    if config.contains_id("spiral") {
                         spiral_options.model_exponential(&x, &y).boxed()
                     } else {
                         std_dev::regression::derived::exponential(
@@ -597,8 +590,8 @@ fn main() {
                         )
                         .boxed()
                     }
-                } else if config.is_present("logistic") {
-                    if let Ok(ceiling) = config.value_of_t::<f64>("logistic_max") {
+                } else if config.contains_id("logistic") {
+                    if let Some(ceiling) = config.get_one::<f64>("logistic_max").copied() {
                         std_dev::regression::SpiralLogisticWithCeiling::new(
                             spiral_options.clone(),
                             ceiling,
@@ -608,22 +601,22 @@ fn main() {
                     } else {
                         spiral_options.model_logistic(&x, &y).boxed()
                     }
-                } else if config.is_present("sin") {
+                } else if config.contains_id("sin") {
                     spiral_options.model_sine(&x, &y, trig_freq).boxed()
-                } else if config.is_present("cos") {
+                } else if config.contains_id("cos") {
                     spiral_options.model_cosine(&x, &y, trig_freq).boxed()
-                } else if config.is_present("tan") {
+                } else if config.contains_id("tan") {
                     spiral_options.model_tangent(&x, &y, trig_freq).boxed()
-                } else if config.is_present("sec") {
+                } else if config.contains_id("sec") {
                     spiral_options.model_secant(&x, &y, trig_freq).boxed()
-                } else if config.is_present("csc") {
+                } else if config.contains_id("csc") {
                     spiral_options.model_cosecant(&x, &y, trig_freq).boxed()
-                } else if config.is_present("cot") {
+                } else if config.contains_id("cot") {
                     spiral_options.model_cotangent(&x, &y, trig_freq).boxed()
-                } else if config.is_present("linear") || config.is_present("degree") {
+                } else if config.contains_id("linear") || config.contains_id("degree") {
                     let degree = {
-                        if let Ok(degree) = config.value_of_t("degree") {
-                            degree
+                        if let Some(degree) = config.get_one("degree") {
+                            *degree
                         } else {
                             1
                         }
@@ -637,17 +630,17 @@ fn main() {
                         linear_estimator.model_linear(&x, &y).boxed()
                     } else {
                         let estimator = {
-                            if config.is_present("theil_sen") {
+                            if config.contains_id("theil_sen") {
                                 std_dev::regression::PolynomialTheilSen.boxed_polynomial()
-                            } else if config.is_present("descent") {
+                            } else if config.contains_id("descent") {
                                 GradientDescentParallelOptions::default().boxed_polynomial()
-                            } else if config.is_present("simultaneous") {
-                                let accuracy = config
-                                    .value_of_t("simultaneous_level")
+                            } else if config.contains_id("simultaneous") {
+                                let accuracy = *config
+                                    .get_one("simultaneous_level")
                                     .expect("we provided a default value and checked the input");
 
                                 GradientDescentSimultaneousOptions::new(accuracy).boxed_polynomial()
-                            } else if config.is_present("spiral") {
+                            } else if config.contains_id("spiral") {
                                 if !(1..=2).contains(&degree) {
                                     spiral_polynomial_degree_error.exit();
                                 }
@@ -672,7 +665,7 @@ fn main() {
                 };
 
                 let p = matches
-                    .value_of("precision")
+                    .get_one::<&str>("precision")
                     .map(|s| s.parse::<usize>().expect("we check this using clap"));
 
                 print_regression(&model, x_iter.clone(), y_iter.clone(), len, p);
@@ -686,11 +679,11 @@ fn main() {
                     }
                 }
 
-                if config.is_present("plot") {
+                if config.contains_id("plot") {
                     let now = Instant::now();
 
                     let mut num_samples = config
-                        .value_of("plot_samples")
+                        .get_one::<&str>("plot_samples")
                         .map(|s| {
                             if let Ok(i) = s.parse() {
                                 i
@@ -700,8 +693,11 @@ fn main() {
                             }
                         })
                         .unwrap_or(500);
-                    if config.is_present("linear")
-                        || config.value_of("degree").map_or(false, |o| o == "1")
+                    if config.contains_id("linear")
+                        || config
+                            .get_one::<&str>("degree")
+                            .copied()
+                            .map_or(false, |o| o == "1")
                     {
                         num_samples = 2;
                     }
@@ -745,9 +741,13 @@ fn main() {
                     let canvas = poloto::render::render_opt();
                     let plotter = poloto::quick_fmt_opt!(
                         canvas,
-                        config.value_of("plot_title").unwrap_or("Regression"),
-                        config.value_of("plot_x_axis").unwrap_or("predictors"),
-                        config.value_of("plot_y_axis").unwrap_or("outcomes"),
+                        config
+                            .get_one::<&str>("plot_title")
+                            .unwrap_or(&"Regression"),
+                        config
+                            .get_one::<&str>("plot_x_axis")
+                            .unwrap_or(&"predictors"),
+                        config.get_one::<&str>("plot_y_axis").unwrap_or(&"outcomes"),
                         poloto::plots!(line, scatter, determination),
                     );
                     let data = poloto::disp(|a| plotter.render(a));
@@ -768,7 +768,7 @@ fn main() {
                     );
 
                     {
-                        let path = if let Some(path) = config.value_of("plot_filename") {
+                        let path = if let Some(path) = config.get_one::<&str>("plot_filename") {
                             let mut path = std::path::Path::new(path).to_path_buf();
                             path.set_extension("svg");
                             path
@@ -838,7 +838,7 @@ fn main() {
                 }
 
                 let p = matches
-                    .value_of("precision")
+                    .get_one::<&str>("precision")
                     .map(|s| s.parse::<usize>().expect("we check this using clap"));
 
                 if let Some(p) = p {
