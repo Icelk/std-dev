@@ -97,7 +97,7 @@ pub trait Predictive {
 }
 impl<T: Predictive + ?Sized> Predictive for &T {
     fn predict_outcome(&self, predictor: f64) -> f64 {
-        (&**self).predict_outcome(predictor)
+        (**self).predict_outcome(predictor)
     }
 }
 /// Helper trait to make the [R²](Determination::determination) method take a generic iterator.
