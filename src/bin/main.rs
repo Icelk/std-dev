@@ -1,4 +1,4 @@
-use clap::{Arg, ValueHint};
+use clap::{Arg, ArgAction, ValueHint};
 use std::env;
 use std::fmt::{Debug, Display};
 #[cfg(feature = "regression")]
@@ -168,18 +168,25 @@ fn main() {
         .arg(
             Arg::new("debug-performance")
                 .short('p')
+                .action(ArgAction::SetTrue)
                 .long("debug-performance")
                 .help(
                     "Print performance information. \
             Can also be enabled by setting the DEBUG_PERFORMANCE environment variable.",
                 ),
         )
-        .arg(Arg::new("multiline").short('m').long("multiline").help(
-            "Accept multiple lines as one input. \
+        .arg(
+            Arg::new("multiline")
+                .short('m')
+                .action(ArgAction::SetTrue)
+                .long("multiline")
+                .help(
+                    "Accept multiple lines as one input. \
             Two consecutive newlines is treated as the series separator. \
             When not doing regression analysis the second 'column' \
             is the count of the first. Acts more like CSV.",
-        ))
+                ),
+        )
         .arg(
             Arg::new("precision")
                 .short('n')
@@ -244,23 +251,31 @@ fn main() {
                 .arg(
                     Arg::new("linear")
                         .short('l')
+                        .action(ArgAction::SetTrue)
                         .long("linear")
                         .help("Tries to fit a line to the provided data."),
                 )
-                .arg(Arg::new("power").short('p').long("power").help(
-                    "Tries to fit a curve defined by the equation `a * x^b` to the data.\
+                .arg(
+                    Arg::new("power")
+                        .short('p')
+                        .action(ArgAction::SetTrue)
+                        .long("power")
+                        .help(
+                            "Tries to fit a curve defined by the equation `a * x^b` to the data.\
                     If any of the predictors are below 1, x becomes (x+c), \
                     where c is an offset to the predictors. \
                     \
                     This is due to the arithmetic issue of taking the \
                     log of negative numbers and 0. A negative addition term \
                     will be appended if any of the outcomes are below 1.",
-                ))
+                        ),
+                )
                 .arg(
                     Arg::new("exponential")
                         .short('e')
                         .visible_alias("growth")
                         .long("exponential")
+                        .action(ArgAction::SetTrue)
                         .help(
                             "Tries to fit a curve defined by the equation `a * b^x` to the data. \
                             If any of the predictors are below 1, x becomes (x+c), \
@@ -271,10 +286,15 @@ fn main() {
                             will be appended if any of the outcomes are below 1.",
                         ),
                 )
-                .arg(Arg::new("logistic").long("logistic").help(
-                    "Tries to fit a curve defined by the logistic equation to the data. \
+                .arg(
+                    Arg::new("logistic")
+                        .long("logistic")
+                        .action(ArgAction::SetTrue)
+                        .help(
+                            "Tries to fit a curve defined by the logistic equation to the data. \
                     This requires the use of the spiral estimator.",
-                ))
+                        ),
+                )
                 .arg(
                     Arg::new("logistic_max")
                         .long("logistic-ceiling")
@@ -315,14 +335,40 @@ fn main() {
                         .arg("csc")
                         .arg("cot"),
                 )
-                .arg(Arg::new("sin").long("sin").help("Fit a sine wave."))
-                .arg(Arg::new("cos").long("cos").help("Fit a cosine wave."))
-                .arg(Arg::new("tan").long("tan").help("Fit a tangent function."))
-                .arg(Arg::new("sec").long("sec").help("Fit a secant function."))
-                .arg(Arg::new("csc").long("csc").help("Fit a cosecant function."))
+                .arg(
+                    Arg::new("sin")
+                        .long("sin")
+                        .action(ArgAction::SetTrue)
+                        .help("Fit a sine wave."),
+                )
+                .arg(
+                    Arg::new("cos")
+                        .long("cos")
+                        .action(ArgAction::SetTrue)
+                        .help("Fit a cosine wave."),
+                )
+                .arg(
+                    Arg::new("tan")
+                        .long("tan")
+                        .action(ArgAction::SetTrue)
+                        .help("Fit a tangent function."),
+                )
+                .arg(
+                    Arg::new("sec")
+                        .long("sec")
+                        .action(ArgAction::SetTrue)
+                        .help("Fit a secant function."),
+                )
+                .arg(
+                    Arg::new("csc")
+                        .long("csc")
+                        .action(ArgAction::SetTrue)
+                        .help("Fit a cosecant function."),
+                )
                 .arg(
                     Arg::new("cot")
                         .long("cot")
+                        .action(ArgAction::SetTrue)
                         .help("Fit a cotangent function."),
                 )
                 .arg(
@@ -341,20 +387,35 @@ fn main() {
                 .arg(
                     Arg::new("ols")
                         .long("ols")
+                        .action(ArgAction::SetTrue)
                         .help("Use the ordinary least squares estimator. Linear time complexity."),
                 )
-                .arg(Arg::new("theil_sen").long("theil-sen").short('t').help(
-                    "Use the Theil-Sen estimator instead of OLS for all models. O(n^degree).",
-                ))
-                .arg(Arg::new("spiral").long("spiral").short('s').help(
-                    "Use the spiral estimator instead of OLS for all models \
-                    (only supports polynomial of degree 1&2). \
-                    A good result isn't guaranteed. Linear time complexity.",
-                ))
+                .arg(
+                    Arg::new("theil_sen")
+                        .long("theil-sen")
+                        .short('t')
+                        .action(ArgAction::SetTrue)
+                        .help(
+                            "Use the Theil-Sen estimator instead \
+                            of OLS for all models. O(n^degree).",
+                        ),
+                )
+                .arg(
+                    Arg::new("spiral")
+                        .long("spiral")
+                        .short('s')
+                        .action(ArgAction::SetTrue)
+                        .help(
+                            "Use the spiral estimator instead of OLS for all models \
+                            (only supports polynomial of degree 1&2). \
+                            A good result isn't guaranteed. Linear time complexity.",
+                        ),
+                )
                 .arg(
                     Arg::new("descent")
                         .long("gradient-descent")
                         .short('g')
+                        .action(ArgAction::SetTrue)
                         .help(
                             "Use the gradient descent estimator instead of OLS for all models. \
                             A good result is guaranteed. Linear time complexity.",
@@ -364,6 +425,7 @@ fn main() {
                     Arg::new("simultaneous")
                         .long("gradient-descent-descent")
                         .short('u')
+                        .action(ArgAction::SetTrue)
                         .help(
                             "Use the gradient descent estimator instead of OLS for all models. \
                             The simultaneous estimator is better at regressions where multiple \
@@ -414,6 +476,7 @@ fn main() {
                 .arg(
                     Arg::new("plot")
                         .long("plot")
+                        .action(ArgAction::SetTrue)
                         .help("Plots the regression and input variables in a SVG."),
                 )
                 .arg(
@@ -485,7 +548,7 @@ fn main() {
     }
 
     let debug_performance = env::var("DEBUG_PERFORMANCE").ok().map_or_else(
-        || matches.contains_id("debug-performance"),
+        || matches.get_flag("debug-performance"),
         |s| !s.trim().is_empty(),
     );
 
@@ -498,8 +561,7 @@ fn main() {
 
     'main: loop {
         let multiline = {
-            matches.contains_id("multiline")
-                || matches!(matches.subcommand_name(), Some("regression"))
+            matches.get_flag("multiline") || matches!(matches.subcommand_name(), Some("regression"))
         };
         let input = if let Some(i) = input(tty, debug_performance, multiline, &mut last_prompt) {
             i
@@ -549,13 +611,13 @@ fn main() {
                     .expect("we provided a default value and have a validator");
 
                 let linear_estimator = {
-                    if config.contains_id("theil_sen") {
+                    if config.get_flag("theil_sen") {
                         std_dev::regression::LinearTheilSen.boxed_linear()
-                    } else if config.contains_id("descent") {
+                    } else if config.get_flag("descent") {
                         GradientDescentParallelOptions::default().boxed_linear()
-                    } else if config.contains_id("simultaneous") {
+                    } else if config.get_flag("simultaneous") {
                         GradientDescentSimultaneousOptions::new(1e-6).boxed_linear()
-                    } else if config.contains_id("spiral") {
+                    } else if config.get_flag("spiral") {
                         spiral_options.clone().boxed_linear()
                     } else {
                         #[cfg(feature = "ols")]
@@ -572,15 +634,15 @@ fn main() {
 
                 let now = Instant::now();
 
-                let model = if config.contains_id("power") {
-                    if config.contains_id("spiral") {
+                let model = if config.get_flag("power") {
+                    if config.get_flag("spiral") {
                         spiral_options.model_power(&x, &y).boxed()
                     } else {
                         std_dev::regression::derived::power(&mut x, &mut y, &&*linear_estimator)
                             .boxed()
                     }
-                } else if config.contains_id("exponential") {
-                    if config.contains_id("spiral") {
+                } else if config.get_flag("exponential") {
+                    if config.get_flag("spiral") {
                         spiral_options.model_exponential(&x, &y).boxed()
                     } else {
                         std_dev::regression::derived::exponential(
@@ -590,7 +652,7 @@ fn main() {
                         )
                         .boxed()
                     }
-                } else if config.contains_id("logistic") {
+                } else if config.get_flag("logistic") {
                     if let Some(ceiling) = config.get_one::<f64>("logistic_max").copied() {
                         std_dev::regression::SpiralLogisticWithCeiling::new(
                             spiral_options.clone(),
@@ -601,19 +663,19 @@ fn main() {
                     } else {
                         spiral_options.model_logistic(&x, &y).boxed()
                     }
-                } else if config.contains_id("sin") {
+                } else if config.get_flag("sin") {
                     spiral_options.model_sine(&x, &y, trig_freq).boxed()
-                } else if config.contains_id("cos") {
+                } else if config.get_flag("cos") {
                     spiral_options.model_cosine(&x, &y, trig_freq).boxed()
-                } else if config.contains_id("tan") {
+                } else if config.get_flag("tan") {
                     spiral_options.model_tangent(&x, &y, trig_freq).boxed()
-                } else if config.contains_id("sec") {
+                } else if config.get_flag("sec") {
                     spiral_options.model_secant(&x, &y, trig_freq).boxed()
-                } else if config.contains_id("csc") {
+                } else if config.get_flag("csc") {
                     spiral_options.model_cosecant(&x, &y, trig_freq).boxed()
-                } else if config.contains_id("cot") {
+                } else if config.get_flag("cot") {
                     spiral_options.model_cotangent(&x, &y, trig_freq).boxed()
-                } else if config.contains_id("linear") || config.contains_id("degree") {
+                } else if config.get_flag("linear") || config.get_one::<usize>("degree").is_some() {
                     let degree = {
                         if let Some(degree) = config.get_one("degree") {
                             *degree
@@ -630,17 +692,17 @@ fn main() {
                         linear_estimator.model_linear(&x, &y).boxed()
                     } else {
                         let estimator = {
-                            if config.contains_id("theil_sen") {
+                            if config.get_flag("theil_sen") {
                                 std_dev::regression::PolynomialTheilSen.boxed_polynomial()
-                            } else if config.contains_id("descent") {
+                            } else if config.get_flag("descent") {
                                 GradientDescentParallelOptions::default().boxed_polynomial()
-                            } else if config.contains_id("simultaneous") {
+                            } else if config.get_flag("simultaneous") {
                                 let accuracy = *config
                                     .get_one("simultaneous_level")
                                     .expect("we provided a default value and checked the input");
 
                                 GradientDescentSimultaneousOptions::new(accuracy).boxed_polynomial()
-                            } else if config.contains_id("spiral") {
+                            } else if config.get_flag("spiral") {
                                 if !(1..=2).contains(&degree) {
                                     spiral_polynomial_degree_error.exit();
                                 }
@@ -679,7 +741,7 @@ fn main() {
                     }
                 }
 
-                if config.contains_id("plot") {
+                if config.get_flag("plot") {
                     let now = Instant::now();
 
                     let mut num_samples = config
@@ -693,11 +755,8 @@ fn main() {
                             }
                         })
                         .unwrap_or(500);
-                    if config.contains_id("linear")
-                        || config
-                            .get_one::<&str>("degree")
-                            .copied()
-                            .map_or(false, |o| o == "1")
+                    if config.get_flag("linear")
+                        || config.get_one::<usize>("degree").map_or(false, |o| *o == 1)
                     {
                         num_samples = 2;
                     }
