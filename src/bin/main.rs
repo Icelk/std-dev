@@ -775,9 +775,9 @@ fn main() {
                         .into_iter()
                         .map(|current| (current as f64 / (num_samples - 1) as f64) * range + x_min);
 
-                    let line = poloto::build::line(
-                        format!("{model:.*}", p.unwrap_or(2)),
-                        x.map(|x| {
+                    let line = poloto::build::plot(format!("{model:.*}", p.unwrap_or(2)))
+                        .line()
+                        .cloned(x.map(|x| {
                             let y = model.predict_outcome(x);
                             (
                                 x,
@@ -788,43 +788,40 @@ fn main() {
                                     f64::NAN
                                 },
                             )
-                        }),
-                    );
-                    let scatter =
-                        poloto::build::scatter("".to_owned(), x_iter.clone().zip(y_iter.clone()));
-                    let determination = poloto::build::text(format!(
+                        }));
+                    let scatter = poloto::build::plot("".to_owned())
+                        .scatter()
+                        .cloned(x_iter.clone().zip(y_iter.clone()));
+                    let determination = poloto::build::plot(format!(
                         "R² = {:.4}",
                         model.determination(x_iter, y_iter, len)
-                    ));
+                    ))
+                    .text();
 
-                    let canvas = poloto::render::render_opt();
-                    let plotter = poloto::quick_fmt_opt!(
-                        canvas,
-                        config
-                            .get_one::<&str>("plot_title")
-                            .unwrap_or(&"Regression"),
-                        config
-                            .get_one::<&str>("plot_x_axis")
-                            .unwrap_or(&"predictors"),
-                        config.get_one::<&str>("plot_y_axis").unwrap_or(&"outcomes"),
-                        poloto::plots!(line, scatter, determination),
-                    );
-                    let data = poloto::disp(|a| plotter.render(a));
-                    // Some scuffed styling to remove bar above R² value, move that closer to the
-                    // equation, and to increase the width of the SVG.
-                    // The styles are very dependent on only having 1 line.
-                    let data = format!(
-                        "{}<style>{}{}</style>{}{}",
-                        poloto::disp_const(|w| poloto::simple_theme::write_header(
-                            w,
-                            [1100.0, 500.0],
-                            [1100.0, 500.0],
-                        )),
-                        poloto::simple_theme::STYLE_CONFIG_DARK_DEFAULT,
-                        r##".poloto_legend_text[y="200"] { transform: translate(0, -60px); }"##,
-                        data,
-                        poloto::simple_theme::SVG_END,
-                    );
+                    use hypermelon::elem::Elem;
+
+                    let plotter = poloto::data(poloto::plots!(line, scatter, determination))
+                        .build_and_label((
+                            config
+                                .get_one::<&str>("plot_title")
+                                .unwrap_or(&"Regression"),
+                            config
+                                .get_one::<&str>("plot_x_axis")
+                                .unwrap_or(&"predictors"),
+                            config.get_one::<&str>("plot_y_axis").unwrap_or(&"outcomes"),
+                        ))
+                        .append_to(
+                            poloto::header()
+                                .with_dim([1100., 500.])
+                                .with_viewbox([1100., 500.])
+                                .append(poloto::render::Theme::dark())
+                                .append(hypermelon::elem::Element::new("style").append(
+                                    ".poloto_legend_text[y=\"200\"] \
+                                    { transform: translate(0, -60px); }",
+                                )),
+                        );
+
+                    let data = plotter.render_string().unwrap();
 
                     {
                         let path = if let Some(path) = config.get_one::<&str>("plot_filename") {
