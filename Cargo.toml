@@ -33,7 +33,7 @@ atty = { version = "0.2.14", optional = true }
 clap = { version = "4.0", optional = true, features = ["cargo"] }
 clap_autocomplete = { version = "0.3", optional = true }
 poloto = { version = "16", optional = true, default-features = false }
-hypermelon = "0.3.13"
+hypermelon = "0.4.0"
 
 [features]
 default = ["bin", "pretty", "completion", "regression", "ols", "percentile-rand", "simplify-fraction", "generic-impls"]
