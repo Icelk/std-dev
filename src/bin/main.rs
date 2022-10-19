@@ -816,7 +816,7 @@ fn main() {
                                 .with_viewbox([1100., 500.])
                                 .append(poloto::render::Theme::dark())
                                 .append(hypermelon::elem::Element::new("style").append(
-                                    ".poloto_legend_text[y=\"200\"] \
+                                    ".poloto_legend[y=\"200\"] \
                                     { transform: translate(0, -60px); }",
                                 )),
                         );
