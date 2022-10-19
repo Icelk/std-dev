@@ -726,9 +726,7 @@ fn main() {
                     std_dev::regression::best_fit(&x, &y, &&*linear_estimator)
                 };
 
-                let p = matches
-                    .get_one::<&str>("precision")
-                    .map(|s| s.parse::<usize>().expect("we check this using clap"));
+                let p = matches.get_one::<usize>("precision").copied();
 
                 print_regression(&model, x_iter.clone(), y_iter.clone(), len, p);
 
@@ -893,9 +891,7 @@ fn main() {
                     println!("Median & quadrilles took {}µs", now.elapsed().as_micros());
                 }
 
-                let p = matches
-                    .get_one::<&str>("precision")
-                    .map(|s| s.parse::<usize>().expect("we check this using clap"));
+                let p = matches.get_one::<usize>("precision").copied();
 
                 if let Some(p) = p {
                     println!(
