@@ -167,12 +167,12 @@ fn main() {
         )
         .arg(
             Arg::new("debug-performance")
-                .short('p')
                 .action(ArgAction::SetTrue)
                 .long("debug-performance")
                 .help(
                     "Print performance information. \
-            Can also be enabled by setting the DEBUG_PERFORMANCE environment variable.",
+                    Can also be enabled by setting the \
+                    DEBUG_PERFORMANCE environment variable.",
                 ),
         )
         .arg(
