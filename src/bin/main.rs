@@ -801,12 +801,14 @@ fn main() {
                     let plotter = poloto::data(poloto::plots!(line, scatter, determination))
                         .build_and_label((
                             config
-                                .get_one::<&str>("plot_title")
-                                .unwrap_or(&"Regression"),
+                                .get_one::<String>("plot_title")
+                                .map_or("Regression", String::as_str),
                             config
-                                .get_one::<&str>("plot_x_axis")
-                                .unwrap_or(&"predictors"),
-                            config.get_one::<&str>("plot_y_axis").unwrap_or(&"outcomes"),
+                                .get_one::<String>("plot_x_axis")
+                                .map_or("predictors", String::as_str),
+                            config
+                                .get_one::<String>("plot_y_axis")
+                                .map_or("outcomes", String::as_str),
                         ))
                         .append_to(
                             poloto::header()
