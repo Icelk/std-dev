@@ -44,6 +44,7 @@ use std::ops::Deref;
 #[doc(inline)]
 pub use models::*;
 
+pub use binary_search::Options as BinarySearchOptions;
 #[cfg(feature = "ols")]
 pub use derived::{exponential_ols, power_ols};
 pub use gradient_descent::{
@@ -54,7 +55,6 @@ pub use gradient_descent::{
 pub use ols::OlsEstimator;
 pub use spiral::{SpiralLinear, SpiralLogisticWithCeiling};
 pub use theil_sen::{LinearTheilSen, PolynomialTheilSen};
-pub use binary_search::Options as BinarySearchOptions;
 
 trait Model: Predictive + Display {}
 impl<T: Predictive + Display> Model for T {}
