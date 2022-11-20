@@ -52,9 +52,9 @@ pub use gradient_descent::{
 };
 #[cfg(feature = "ols")]
 pub use ols::OlsEstimator;
-pub use spiral::estimators::*;
-pub use spiral::SpiralLogisticWithCeiling;
+pub use spiral::{SpiralLinear, SpiralLogisticWithCeiling};
 pub use theil_sen::{LinearTheilSen, PolynomialTheilSen};
+pub use binary_search::Options as BinarySearchOptions;
 
 trait Model: Predictive + Display {}
 impl<T: Predictive + Display> Model for T {}
@@ -2449,6 +2449,7 @@ pub mod spiral {
     use super::*;
     use std::f64::consts::{E, TAU};
     use std::ops::Range;
+    use utils::*;
 
     /// Samples points on a logarithmic spiral in the phase space of all possible straight lines.
     ///
@@ -2688,102 +2689,24 @@ pub mod spiral {
         }
     }
 
-    /// Like [`Determination::determination_slice`] but faster and more robust to outliers - values
-    /// aren't squared (which increases the magnitude of outliers).
-    ///
-    /// `O(n)`
-    #[inline(always)]
-    pub fn manhattan_distance(
-        model: &impl Predictive,
-        predictors: &[f64],
-        outcomes: &[f64],
-    ) -> f64 {
-        let mut error = 0.;
-        for (predictor, outcome) in predictors.iter().copied().zip(outcomes.iter().copied()) {
-            let predicted = model.predict_outcome(predictor);
-            let length = (predicted - outcome).abs();
-            error += length;
+    pub(super) struct SecondDegreePolynomial(pub(super) [f64; 3]);
+    impl Predictive for SecondDegreePolynomial {
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            self.0[0] + self.0[1] * predictor + self.0[2] * predictor * predictor
         }
-
-        -error
     }
 
-    /// Estimators based on the general spiral method.
-    pub mod estimators {
-        use super::*;
-
-        pub(super) fn trig_adjusted_manhattan_distance(
-            model: &impl Predictive,
-            params: [f64; 3],
-            predictors: &[f64],
-            outcomes: &[f64],
-            max_frequency: f64,
-        ) -> f64 {
-            let mut base = manhattan_distance(model, predictors, outcomes);
-            if params[0].is_sign_negative()
-                || params[1].is_sign_negative()
-                || params[2].is_sign_negative()
-            {
-                base *= 10.;
-            }
-            if params[1] > max_frequency {
-                base *= 10.;
-            }
-            base
-        }
-
-        pub(super) struct SecondDegreePolynomial(pub(super) [f64; 3]);
-        impl Predictive for SecondDegreePolynomial {
-            fn predict_outcome(&self, predictor: f64) -> f64 {
-                self.0[0] + self.0[1] * predictor + self.0[2] * predictor * predictor
-            }
-        }
-        #[inline(always)]
-        pub(super) fn wrap_linear(a: [f64; 2]) -> LinearCoefficients {
-            LinearCoefficients { k: a[1], m: a[0] }
-        }
-        #[inline(always)]
-        pub(super) fn wrap_power(a: [f64; 2]) -> PowerCoefficients {
-            PowerCoefficients {
-                e: a[1],
-                k: a[0],
-                predictor_additive: 0.,
-                outcome_additive: 0.,
-            }
-        }
-        #[inline(always)]
-        pub(super) fn wrap_exponential(a: [f64; 2]) -> ExponentialCoefficients {
-            ExponentialCoefficients {
-                b: a[1],
-                k: a[0],
-                predictor_additive: 0.,
-                outcome_additive: 0.,
-            }
-        }
-        #[inline(always)]
-        pub(super) fn wrap_logistic(a: [f64; 3]) -> LogisticCoefficients {
-            LogisticCoefficients {
-                x0: a[0],
-                l: a[1],
-                k: a[2],
-            }
-        }
-
-        /// [`LinearEstimator`] for the spiral estimator using a fitness function and [`Options`]
-        /// provided by you.
-        /// `O(fitness function)`
-        pub struct SpiralLinear<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64>(
-            pub F,
-            pub Options,
-        );
-        impl<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64> LinearEstimator for SpiralLinear<F> {
-            fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
-                wrap_linear(two_variable_optimization(
-                    #[inline(always)]
-                    |model| self.0(&wrap_linear(model), predictors, outcomes),
-                    self.1.clone(),
-                ))
-            }
+    /// [`LinearEstimator`] for the spiral estimator using a fitness function and [`Options`]
+    /// provided by you.
+    /// `O(fitness function)`
+    pub struct SpiralLinear<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64>(pub F, pub Options);
+    impl<F: Fn(&LinearCoefficients, &[f64], &[f64]) -> f64> LinearEstimator for SpiralLinear<F> {
+        fn model_linear(&self, predictors: &[f64], outcomes: &[f64]) -> LinearCoefficients {
+            wrap_linear(two_variable_optimization(
+                #[inline(always)]
+                |model| self.0(&wrap_linear(model), predictors, outcomes),
+                self.1.clone(),
+            ))
         }
     }
 
@@ -2813,7 +2736,7 @@ pub mod spiral {
                     fn $method(&self, predictors: &[f64], outcomes: &[f64], max_frequency: f64) -> $ret {
                         $wrap($fn(
                             #[inline(always)]
-                            |model| estimators::trig_adjusted_manhattan_distance(&$wrap(model), model, predictors, outcomes, max_frequency),
+                            |model| trig_adjusted_manhattan_distance(&$wrap(model), model, predictors, outcomes, max_frequency),
                             self.clone(),
                         ))
                     }
@@ -2826,25 +2749,25 @@ pub mod spiral {
         model_linear,
         two_variable_optimization,
         LinearCoefficients,
-        estimators::wrap_linear,
+        wrap_linear,
         //
         PowerEstimator,
         model_power,
         two_variable_optimization,
         PowerCoefficients,
-        estimators::wrap_power,
+        wrap_power,
         //
         ExponentialEstimator,
         model_exponential,
         two_variable_optimization,
         ExponentialCoefficients,
-        estimators::wrap_exponential,
+        wrap_exponential,
         //
         LogisticEstimator,
         model_logistic,
         three_variable_optimization,
         LogisticCoefficients,
-        estimators::wrap_logistic,
+        wrap_logistic,
     );
     impl_estimator_trig!(
         SineEstimator,
@@ -2891,22 +2814,16 @@ pub mod spiral {
             degree: usize,
         ) -> PolynomialCoefficients {
             match degree {
-                1 => estimators::wrap_linear(two_variable_optimization(
+                1 => wrap_linear(two_variable_optimization(
                     #[inline(always)]
-                    |model| {
-                        manhattan_distance(&estimators::wrap_linear(model), predictors, outcomes)
-                    },
+                    |model| manhattan_distance(&wrap_linear(model), predictors, outcomes),
                     self.clone(),
                 ))
                 .into(),
                 2 => three_variable_optimization(
                     #[inline(always)]
                     |model| {
-                        manhattan_distance(
-                            &estimators::SecondDegreePolynomial(model),
-                            predictors,
-                            outcomes,
-                        )
+                        manhattan_distance(&SecondDegreePolynomial(model), predictors, outcomes)
                     },
                     self.clone(),
                 )
@@ -2959,32 +2876,7 @@ pub mod spiral {
 #[allow(missing_docs)]
 pub mod gradient_descent {
     use super::*;
-
-    struct BorrowedPolynomial<'a>(&'a [f64]);
-    impl<'a> Predictive for BorrowedPolynomial<'a> {
-        #[inline(always)]
-        fn predict_outcome(&self, predictor: f64) -> f64 {
-            match self.0.len() {
-                0 => 0.,
-                1 => self.0[0],
-                2 => self.0[1] * predictor + self.0[0],
-                3 => self.0[2] * predictor * predictor + self.0[1] * predictor + self.0[0],
-                4 => {
-                    let p2 = predictor * predictor;
-                    self.0[3] * p2 * predictor + self.0[2] * p2 + self.0[1] * predictor + self.0[0]
-                }
-                _ => {
-                    let mut out = 0.0;
-                    let mut pred = 1.;
-                    for coefficient in self.0.iter().copied() {
-                        out += pred * coefficient;
-                        pred *= predictor;
-                    }
-                    out
-                }
-            }
-        }
-    }
+    use utils::BorrowedPolynomial;
 
     pub struct ParallelOptions {
         pub learn_rate: f64,
@@ -3246,12 +3138,14 @@ pub mod gradient_descent {
 
         #[test]
         fn one_variable() {
+            let now = std::time::Instant::now();
             let v = ParallelOptions::default()
                 .polynomial_optimization(1, 1e-12, |values| (values[0] - 42.4242).powi(2));
-            println!("{v:?}");
+            println!("{v:?} {:?}", now.elapsed());
         }
         #[test]
         fn two_variable_regression() {
+            let now = std::time::Instant::now();
             let x = [1.3, 4.7, 9.4];
             let y = [4., 5.3, 6.7];
             let v = ParallelOptions::default().polynomial_optimization(2, 1e-6, |values| {
@@ -3262,7 +3156,814 @@ pub mod gradient_descent {
                 .determination_slice(&x, &y)
             });
             let coeffs = LinearCoefficients { k: v[0], m: v[1] };
-            println!("{coeffs} R² {}", coeffs.determination_slice(&x, &y));
+            println!(
+                "{coeffs} R² {} {:?}",
+                coeffs.determination_slice(&x, &y),
+                now.elapsed()
+            );
+        }
+    }
+}
+
+/// A random binary searching n-variable optimizer.
+///
+/// Independently binary searches the variables over the entire range of `f64`s.
+/// Supports any number of variables to be optimized together.
+///
+/// This has performance in the ballpark of OLS, but enables you to give your own function,
+/// which means you can optimize for things other than least squares along straight lines.
+/// This opens up the opportunity to fit other functions (any you want) and
+/// to use functions less prone to outliers (least squares is very prone).
+pub mod binary_search {
+    use super::*;
+    #[cfg(feature = "binary_search_rng")]
+    use rand::Rng;
+    use std::borrow::Cow;
+
+    /// A trait which allows storage of n-variable optimization, either on the stack through arrays
+    /// (`[f64; VARIABLE_COUNT]`) or allocated on the heap through `Vec`.
+    #[allow(clippy::len_without_is_empty)] // just no
+    pub trait NVariableStorage:
+        std::ops::IndexMut<usize, Output = f64> + AsRef<[f64]> + AsMut<[f64]> + Clone
+    {
+        /// Associated data for use in construction of this type.
+        /// The number of arguments in case of using a `Vec`,
+        /// nothing when using arrays, as we know their length in
+        /// compile time.
+        type Data;
+        /// The structure that's given to the fitness function.
+        type Given<'a>: AsRef<[f64]>
+        where
+            Self: 'a;
+        /// Creates a new storage filled with `num`.
+        fn new_filled(data: &Self::Data, num: f64) -> Self;
+        /// How many variables we are optimizing.
+        fn len(&self) -> usize;
+        /// Borrow the current variables.
+        fn borrow(&self) -> Self::Given<'_>;
+    }
+    impl<const LENGTH: usize> NVariableStorage for [f64; LENGTH] {
+        type Data = ();
+        type Given<'a> = [f64; LENGTH];
+        fn new_filled(_data: &(), num: f64) -> Self {
+            [num; LENGTH]
+        }
+        fn len(&self) -> usize {
+            LENGTH
+        }
+        fn borrow(&self) -> Self::Given<'_> {
+            *self
+        }
+    }
+
+    /// Dynamically sized storage, for use when the number of variables isn't known at compile
+    /// time.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct VariableLengthStorage(pub usize);
+    impl NVariableStorage for Vec<f64> {
+        type Data = VariableLengthStorage;
+        type Given<'a> = &'a [f64];
+        fn new_filled(data: &Self::Data, num: f64) -> Self {
+            vec![num; data.0]
+        }
+        fn len(&self) -> usize {
+            Vec::len(self)
+        }
+        fn borrow(&self) -> Self::Given<'_> {
+            self
+        }
+    }
+    impl From<usize> for VariableLengthStorage {
+        fn from(n: usize) -> Self {
+            Self(n)
+        }
+    }
+
+    /// Generated using:
+    /// ```
+    /// (0..61)
+    ///     .into_iter()
+    ///     .map(|i| {
+    ///         f64::MAX.powf(1. / (2.0f64.powi(i+2)))
+    ///     })
+    ///     .collect::<Vec<_>>();
+    /// ```
+    // braces for folding
+    static SQRTS_FROM_F64_MAX: [f64; 61] = {
+        [
+            1.157920892373162e77,
+            3.402823669209385e38,
+            1.8446744073709552e19,
+            4294967296.0,
+            65536.0,
+            256.0,
+            16.0,
+            4.0,
+            2.0,
+            core::f64::consts::SQRT_2,
+            1.189207115002721,
+            1.0905077326652577,
+            1.0442737824274138,
+            1.0218971486541166,
+            1.0108892860517005,
+            1.0054299011128027,
+            1.0027112750502025,
+            1.0013547198921082,
+            1.0006771306930664,
+            1.0003385080526823,
+            1.0001692397053021,
+            1.0000846162726944,
+            1.0000423072413958,
+            1.0000211533969647,
+            1.0000105766425498,
+            1.0000052883072919,
+            1.0000026441501502,
+            1.0000013220742012,
+            1.0000006610368821,
+            1.0000003305183864,
+            1.0000001652591795,
+            1.0000000826295863,
+            1.0000000413147923,
+            1.000000020657396,
+            1.000000010328698,
+            1.000000005164349,
+            1.0000000025821745,
+            1.0000000012910872,
+            1.0000000006455436,
+            1.0000000003227718,
+            1.0000000001613858,
+            1.000000000080693,
+            1.0000000000403464,
+            1.0000000000201732,
+            1.0000000000100866,
+            1.0000000000050433,
+            1.0000000000025218,
+            1.0000000000012608,
+            1.0000000000006304,
+            1.0000000000003153,
+            1.0000000000001577,
+            1.0000000000000788,
+            1.0000000000000393,
+            1.0000000000000198,
+            1.0000000000000098,
+            1.0000000000000049,
+            1.0000000000000024,
+            1.0000000000000013,
+            1.0000000000000007,
+            1.0000000000000002,
+            1.0000000000000002,
+        ]
+    };
+
+    /// Options for the binary search optimization.
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct Options {
+        /// Number of iterations to search for the optimal value
+        pub iterations: usize,
+        /// How fine values you can get. 59 covers the whole range of `f64`
+        /// 30 seems to get you ~7 significant digits
+        pub precision: usize,
+        /// The assumed max value. Use `f64::MAX` to cover the whole range of `f64`.
+        pub max: f64,
+        /// Config for using [`random_subset_regression`].
+        #[cfg(feature = "random_subset_regression")]
+        pub random_subset_regression: Option<random_subset_regression::Config>,
+    }
+    impl Default for Options {
+        fn default() -> Self {
+            Self {
+                iterations: 10,
+                // precision: 59,
+                precision: 30,
+                max: f64::MAX,
+                #[cfg(feature = "random_subset_regression")]
+                random_subset_regression: None,
+            }
+        }
+    }
+    impl Options {
+        /// Get max precision of every variable.
+        pub fn max_precision(&self) -> Self {
+            let mut me = *self;
+            me.precision = 61;
+            me
+        }
+
+        /// Like [`Options::n_variable_optimization`] but without random variation. More easily
+        /// falls into local maxima (a variables thought to be the best). Useful for independent
+        /// variables.
+        ///
+        /// Faster than [`Options::n_variable_optimization`].
+        pub fn n_variable_optimization_no_rng<NV: NVariableStorage>(
+            &self,
+            fitness_function: impl Fn(NV::Given<'_>) -> f64,
+            data: NV::Data,
+        ) -> NV {
+            let initial_center = self.max.sqrt();
+
+            let mut values = NV::new_filled(&data, 0.);
+            let factors = if self.max == f64::MAX {
+                Cow::Borrowed(
+                    &SQRTS_FROM_F64_MAX[0..(self.precision.min(SQRTS_FROM_F64_MAX.len()))],
+                )
+            } else {
+                let mut f = initial_center;
+                Cow::Owned(
+                    (0..self.precision.min(61))
+                        .into_iter()
+                        .map(|_| {
+                            f = f.sqrt();
+                            f
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            };
+            let mut centers = NV::new_filled(&data, initial_center);
+            let n = values.len();
+
+            for _ in 0..self.iterations {
+                // reset centers
+                for c in centers.as_mut() {
+                    *c = initial_center;
+                }
+
+                // for each precision level
+                for factor in factors.as_ref() {
+                    // in every precision level, update the centers of all variabels
+                    for i in 0..n {
+                        let mut center = centers[i];
+                        // -1 to get 0 (the repeated division by sqrt approaches 1)
+                        let center_over = center * factor;
+                        let center_under = center / factor;
+                        let value_over = center_over - 1.0;
+                        let value_under = center_under - 1.0;
+                        values[i] = value_over;
+                        let fitness_over = fitness_function(values.borrow());
+                        values[i] = value_under;
+                        let fitness_under = fitness_function(values.borrow());
+                        if !fitness_over.is_finite() || fitness_under < fitness_over {
+                            center = center_under;
+                            // values[i] = value_under already set
+                        } else {
+                            center = center_over;
+                            values[i] = value_over;
+                        }
+                        centers[i] = center;
+                    }
+                }
+            }
+            values
+        }
+        /// Optimize `n` variables to `fitness_function`.
+        /// Will return a set of values which (hopefully) minimize `fitness_function`.
+        #[cfg(feature = "binary_search_rng")]
+        pub fn n_variable_optimization<NV: NVariableStorage>(
+            &self,
+            fitness_function: impl Fn(NV::Given<'_>) -> f64,
+            data: NV::Data,
+            rng: &mut impl Rng,
+        ) -> NV {
+            let initial_center = self.max.sqrt();
+
+            let mut values = NV::new_filled(&data, 0.);
+            // pregenerate all successive sqrts of `initial_center`
+            // we could instead do `factor = factor.sqrt()` at the end of each
+            // `for _ in 0..self.precision`, but then, we'd do this `self.iterations` times.
+            //
+            // if `self.max` is f64::MAX, then use pregenerated list and don't allocate!
+            let factors = if self.max == f64::MAX {
+                Cow::Borrowed(
+                    &SQRTS_FROM_F64_MAX[0..(self.precision.min(SQRTS_FROM_F64_MAX.len()))],
+                )
+            } else {
+                let mut f = initial_center;
+                Cow::Owned(
+                    (0..self.precision.min(61))
+                        .into_iter()
+                        .map(|_| {
+                            f = f.sqrt();
+                            f
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            };
+            // keep track of & store all centers
+            let mut centers = NV::new_filled(&data, initial_center);
+
+            // track best values
+            let mut best_fitness = f64::MAX;
+            let mut best_values = values.clone();
+
+            let n = values.len();
+
+            for iter in 0..self.iterations {
+                // reset centers
+                for c in centers.as_mut() {
+                    *c = initial_center;
+                }
+                // decrease randomness at the end
+                let progress = 1.0 - iter as f64 / self.iterations as f64;
+                // gen f32 since that takes less bytes
+                let rng_factor = 1. + (2.0 * rng.gen::<f32>() as f64 - 1.) * 0.1 * progress;
+
+                // for each precision level (`for _ in 0..self.precision`, see note at definition
+                // of `factors`)
+                for factor in factors.as_ref() {
+                    let factor = factor * rng_factor;
+
+                    // in every precision level, update the centers of all variabels
+                    for i in 0..n {
+                        let mut center = centers[i];
+                        // -1 to get 0 (the repeated division by sqrt approaches 1)
+                        let center_over = center * factor;
+                        let center_under = center / factor;
+                        let value_over = center_over - 1.0;
+                        let value_under = center_under - 1.0;
+                        values[i] = value_over;
+                        let fitness_over = fitness_function(values.borrow());
+                        values[i] = value_under;
+                        let fitness_under = fitness_function(values.borrow());
+                        if !fitness_over.is_finite() || fitness_under < fitness_over {
+                            center = center_under;
+                            // values[i] = value_under already set
+                        } else {
+                            center = center_over;
+                            values[i] = value_over;
+                        }
+                        centers[i] = center;
+                    }
+                }
+
+                // update best value
+                let fitness = fitness_function(values.borrow());
+                if fitness < best_fitness {
+                    best_values.as_mut().copy_from_slice(values.as_ref());
+                    best_fitness = fitness;
+                }
+            }
+            best_values
+        }
+    }
+
+    #[cfg(feature = "binary_search_rng")]
+    macro_rules! impl_estimator {
+        ($(
+            $name:ident, $method:ident, $ret:ident, $wrap:expr,
+        )+) => {
+            $(
+                impl $name for Options {
+                    fn $method(&self, predictors: &[f64], outcomes: &[f64]) -> $ret {
+                        use rand::SeedableRng;
+                        let mut rng = rand_xorshift::XorShiftRng::from_rng(rand::thread_rng()).unwrap();
+
+                        #[cfg(feature = "random_subset_regression")]
+                        if let Some(random_config) = &self.random_subset_regression {
+                            let subsets =
+                                random_subset_regression::Subsets::new(
+                                    predictors,
+                                    outcomes,
+                                    random_config,
+                                    &mut rng
+                                );
+                            if let Some(subsets) = subsets {
+                                return $wrap(self.n_variable_optimization(
+                                    |model| {
+                                        let (predictors, outcomes) = subsets.next_subset();
+                                        -utils::manhattan_distance(
+                                            &$wrap(model),
+                                            predictors,
+                                            outcomes,
+                                        )
+                                    },
+                                    (),
+                                    &mut rng,
+                                ));
+                            }
+                        }
+                        $wrap(self.n_variable_optimization(
+                            #[inline(always)]
+                            |model| -utils::manhattan_distance(&$wrap(model), predictors, outcomes),
+                            (),
+                            &mut rng,
+                        ))
+                    }
+                }
+            )+
+        };
+    }
+    #[cfg(feature = "binary_search_rng")]
+    macro_rules! impl_estimator_trig {
+        ($(
+            $name:ident, $method:ident, $ret:ident, $wrap:expr,
+        )+) => {
+            $(
+                impl $name for Options {
+                    fn $method(&self, predictors: &[f64], outcomes: &[f64], max_frequency: f64) -> $ret {
+                        use rand::SeedableRng;
+                        let mut rng = rand_xorshift::XorShiftRng::from_rng(rand::thread_rng()).unwrap();
+
+                        #[cfg(feature = "random_subset_regression")]
+                        if let Some(random_config) = &self.random_subset_regression {
+                            let subsets =
+                                random_subset_regression::Subsets::new(
+                                    predictors,
+                                    outcomes,
+                                    random_config,
+                                    &mut rng
+                                );
+                            if let Some(subsets) = subsets {
+                                return $wrap(self.n_variable_optimization(
+                                    |model| {
+                                        let (predictors, outcomes) = subsets.next_subset();
+                                        -utils::trig_adjusted_manhattan_distance(
+                                            &$wrap(model),
+                                            model,
+                                            predictors,
+                                            outcomes,
+                                            max_frequency,
+                                        )
+                                    },
+                                    (),
+                                    &mut rng,
+                                ));
+                            }
+                        }
+                        $wrap(self.n_variable_optimization(
+                            #[inline(always)]
+                            |model| {
+                                -utils::trig_adjusted_manhattan_distance(
+                                    &$wrap(model),
+                                    model,
+                                    predictors,
+                                    outcomes,
+                                    max_frequency
+                                )
+                            },
+                            (),
+                            &mut rng,
+                        ))
+                    }
+                }
+            )+
+        };
+    }
+
+    #[cfg(feature = "binary_search_rng")]
+    impl_estimator!(
+        LinearEstimator,
+        model_linear,
+        LinearCoefficients,
+        utils::wrap_linear,
+        //
+        PowerEstimator,
+        model_power,
+        PowerCoefficients,
+        utils::wrap_power,
+        //
+        ExponentialEstimator,
+        model_exponential,
+        ExponentialCoefficients,
+        utils::wrap_exponential,
+        //
+        LogisticEstimator,
+        model_logistic,
+        LogisticCoefficients,
+        utils::wrap_logistic,
+    );
+    #[cfg(feature = "binary_search_rng")]
+    impl_estimator_trig!(
+        SineEstimator,
+        model_sine,
+        SineCoefficients,
+        SineCoefficients::wrap,
+        //
+        CosineEstimator,
+        model_cosine,
+        CosineCoefficients,
+        CosineCoefficients::wrap,
+        //
+        TangentEstimator,
+        model_tangent,
+        TangentCoefficients,
+        TangentCoefficients::wrap,
+        //
+        SecantEstimator,
+        model_secant,
+        SecantCoefficients,
+        SecantCoefficients::wrap,
+        //
+        CosecantEstimator,
+        model_cosecant,
+        CosecantCoefficients,
+        CosecantCoefficients::wrap,
+        //
+        CotangentEstimator,
+        model_cotangent,
+        CotangentCoefficients,
+        CotangentCoefficients::wrap,
+    );
+    #[cfg(feature = "binary_search_rng")]
+    impl PolynomialEstimator for Options {
+        fn model_polynomial(
+            &self,
+            predictors: &[f64],
+            outcomes: &[f64],
+            degree: usize,
+        ) -> PolynomialCoefficients {
+            use rand::SeedableRng;
+            let mut rng = rand_xorshift::XorShiftRng::from_rng(rand::thread_rng()).unwrap();
+
+            #[cfg(feature = "random_subset_regression")]
+            if let Some(random_config) = &self.random_subset_regression {
+                let subsets = random_subset_regression::Subsets::new(
+                    predictors,
+                    outcomes,
+                    random_config,
+                    &mut rng,
+                );
+                if let Some(subsets) = subsets {
+                    return PolynomialCoefficients {
+                        coefficients: (self.n_variable_optimization(
+                            |model| {
+                                let (predictors, outcomes) = subsets.next_subset();
+                                -utils::manhattan_distance(
+                                    &utils::BorrowedPolynomial(model),
+                                    predictors,
+                                    outcomes,
+                                )
+                            },
+                            (degree + 1).into(),
+                            &mut rng,
+                        )),
+                    };
+                }
+            }
+            PolynomialCoefficients {
+                coefficients: (self.n_variable_optimization(
+                    #[inline(always)]
+                    |model| {
+                        -utils::manhattan_distance(
+                            &utils::BorrowedPolynomial(model),
+                            predictors,
+                            outcomes,
+                        )
+                    },
+                    (degree + 1).into(),
+                    &mut rng,
+                )),
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::super::*;
+        use super::*;
+
+        #[test]
+        fn one_variable_regression() {
+            let now = std::time::Instant::now();
+            let values = super::Options::default()
+                .max_precision()
+                .n_variable_optimization_no_rng::<[f64; 1]>(
+                    |s| (s[0] - 42.42424242424242).abs(),
+                    (),
+                );
+            println!("{values:?} {:?}", now.elapsed());
+        }
+        #[test]
+        #[cfg(feature = "binary_search_rng")]
+        fn two_variable_regression() {
+            let mut rng = rand::thread_rng();
+            let now = std::time::Instant::now();
+            let x = [1.3, 4.7, 9.4];
+            let y = [4., 5.3, 6.7];
+            let v = Options::default().n_variable_optimization::<[f64; 2]>(
+                |values| {
+                    -utils::manhattan_distance(
+                        &LinearCoefficients {
+                            k: values[0],
+                            m: values[1],
+                        },
+                        &x,
+                        &y,
+                    )
+                },
+                (),
+                &mut rng,
+            );
+            let coeffs = LinearCoefficients { k: v[0], m: v[1] };
+            println!(
+                "{coeffs} R² {} {:?}",
+                coeffs.determination_slice(&x, &y),
+                now.elapsed()
+            );
+        }
+        #[test]
+        #[cfg(feature = "binary_search_rng")]
+        fn second_degree_regression() {
+            // init thread rng
+            let _rng = rand::thread_rng();
+            let now = std::time::Instant::now();
+            let x = [1.3, 4.7, 9.4];
+            let y = [4., 5.3, 6.7];
+            let coeffs = Options::default().model_polynomial(&x, &y, 2);
+            println!(
+                "{coeffs} R² {} {:?}",
+                coeffs.determination_slice(&x, &y),
+                now.elapsed()
+            );
+        }
+    }
+}
+
+/// Improves speed of regression by only taking a few points into account.
+///
+/// Randomly selects several sets of points which are checked. Works with [`binary_search`]
+/// and can easily be expanded to [`spiral`] and [`gradient_descent`].
+#[cfg(feature = "random_subset_regression")]
+#[allow(dead_code)] // the user interacts with this through `binary_search`, so when that's
+                    // disabled, this becomes dead code.
+pub mod random_subset_regression {
+    use rand::prelude::Distribution;
+    use rand::Rng;
+    /// Config for generation of subsets of points.
+    /// See [`super::binary_search::Options::random_subset_regression`].
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Config {
+        /// How many points each subset should contain.
+        pub subset_length: usize,
+        /// If [`Config::subset_length`] * this < the count of points, don't discard any points.
+        /// If this is set to 1 (a panic will happen) the implementation would most likely pick
+        /// several duplicate points.
+        pub minimum_factor_of_length: usize,
+        /// How many subsets to vary between
+        pub subsets_count: usize,
+    }
+    impl Default for Config {
+        fn default() -> Self {
+            Self {
+                subset_length: 100,
+                minimum_factor_of_length: 4,
+                subsets_count: 8,
+            }
+        }
+    }
+    pub(crate) struct Subsets {
+        subsets: Vec<(Vec<f64>, Vec<f64>)>,
+        i: std::rc::Rc<std::cell::RefCell<usize>>,
+    }
+    impl Subsets {
+        pub(crate) fn new(
+            x: &[f64],
+            y: &[f64],
+            config: &Config,
+            rng: &mut impl Rng,
+        ) -> Option<Self> {
+            if x.len() != y.len() {
+                return None;
+            }
+            if x.len() < config.subset_length * config.minimum_factor_of_length {
+                return None;
+            }
+            if config.minimum_factor_of_length < 2 {
+                eprintln!("random_subset_regression failed because configured `minimum_factor_of_length` is less than 2");
+                return None;
+            }
+            if config.subsets_count < 2 {
+                eprintln!(
+                    "random_subset_regression failed because configured `subsets_count` is less than 2"
+                );
+                return None;
+            }
+            let distribution = rand::distributions::Uniform::new(0, x.len());
+            let subsets = (0..config.subsets_count)
+                .into_iter()
+                .map(|_| {
+                    let mut new_x = Vec::with_capacity(config.subset_length);
+                    let mut new_y = Vec::with_capacity(config.subset_length);
+                    for _ in 0..config.subset_length {
+                        let idx = distribution.sample(rng);
+                        new_x.push(x[idx]);
+                        new_y.push(y[idx]);
+                    }
+                    (new_x, new_y)
+                })
+                .collect();
+            Some(Self {
+                subsets,
+                i: std::rc::Rc::new(std::cell::RefCell::new(0)),
+            })
+        }
+
+        pub(crate) fn next_subset(&self) -> (&[f64], &[f64]) {
+            let index = *self.i.borrow();
+            let (predictors, outcomes) = &self.subsets[index];
+            *self.i.borrow_mut() += 1;
+            if index + 1 == self.subsets.len() {
+                *self.i.borrow_mut() = 0;
+            }
+            (predictors, outcomes)
+        }
+    }
+}
+
+mod utils {
+    use super::*;
+
+    /// Like [`Determination::determination_slice`] but faster and more robust to outliers - values
+    /// aren't squared (which increases the magnitude of outliers).
+    ///
+    /// `O(n)`
+    #[inline(always)]
+    pub(crate) fn manhattan_distance(
+        model: &impl Predictive,
+        predictors: &[f64],
+        outcomes: &[f64],
+    ) -> f64 {
+        let mut error = 0.;
+        for (predictor, outcome) in predictors.iter().copied().zip(outcomes.iter().copied()) {
+            let predicted = model.predict_outcome(predictor);
+            let length = (predicted - outcome).abs();
+            error += length;
+        }
+
+        -error
+    }
+
+    pub(super) fn trig_adjusted_manhattan_distance(
+        model: &impl Predictive,
+        params: [f64; 3],
+        predictors: &[f64],
+        outcomes: &[f64],
+        max_frequency: f64,
+    ) -> f64 {
+        let mut base = manhattan_distance(model, predictors, outcomes);
+        if params[0].is_sign_negative()
+            || params[1].is_sign_negative()
+            || params[2].is_sign_negative()
+        {
+            base *= 10.;
+        }
+        if params[1] > max_frequency {
+            base *= 10.;
+        }
+        base
+    }
+
+    #[inline(always)]
+    pub(super) fn wrap_linear(a: [f64; 2]) -> LinearCoefficients {
+        LinearCoefficients { k: a[1], m: a[0] }
+    }
+    #[inline(always)]
+    pub(super) fn wrap_power(a: [f64; 2]) -> PowerCoefficients {
+        PowerCoefficients {
+            e: a[1],
+            k: a[0],
+            predictor_additive: 0.,
+            outcome_additive: 0.,
+        }
+    }
+    #[inline(always)]
+    pub(super) fn wrap_exponential(a: [f64; 2]) -> ExponentialCoefficients {
+        ExponentialCoefficients {
+            b: a[1],
+            k: a[0],
+            predictor_additive: 0.,
+            outcome_additive: 0.,
+        }
+    }
+    #[inline(always)]
+    pub(super) fn wrap_logistic(a: [f64; 3]) -> LogisticCoefficients {
+        LogisticCoefficients {
+            x0: a[0],
+            l: a[1],
+            k: a[2],
+        }
+    }
+    pub(super) struct BorrowedPolynomial<'a>(pub(super) &'a [f64]);
+    impl<'a> Predictive for BorrowedPolynomial<'a> {
+        #[inline(always)]
+        fn predict_outcome(&self, predictor: f64) -> f64 {
+            match self.0.len() {
+                0 => 0.,
+                1 => self.0[0],
+                2 => self.0[1] * predictor + self.0[0],
+                3 => self.0[2] * predictor * predictor + self.0[1] * predictor + self.0[0],
+                4 => {
+                    let p2 = predictor * predictor;
+                    self.0[3] * p2 * predictor + self.0[2] * p2 + self.0[1] * predictor + self.0[0]
+                }
+                _ => {
+                    let mut out = 0.0;
+                    let mut pred = 1.;
+                    for coefficient in self.0.iter().copied() {
+                        out += pred * coefficient;
+                        pred *= predictor;
+                    }
+                    out
+                }
+            }
         }
     }
 }

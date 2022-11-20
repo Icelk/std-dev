@@ -8,9 +8,9 @@ use std::process::exit;
 use std::str::FromStr;
 use std::time::Instant;
 use std_dev::regression::{
-    CosecantEstimator, CosineEstimator, CotangentEstimator, ExponentialEstimator,
-    GradientDescentParallelOptions, GradientDescentSimultaneousOptions, LogisticEstimator,
-    PowerEstimator, SecantEstimator, SineEstimator, TangentEstimator,
+    BinarySearchOptions, CosecantEstimator, CosineEstimator, CotangentEstimator,
+    ExponentialEstimator, GradientDescentParallelOptions, GradientDescentSimultaneousOptions,
+    LogisticEstimator, PowerEstimator, SecantEstimator, SineEstimator, TangentEstimator,
 };
 #[cfg(feature = "regression")]
 use std_dev::regression::{Determination, LinearEstimator, PolynomialEstimator, Predictive};
@@ -237,6 +237,7 @@ fn main() {
                     clap::ArgGroup::new("estimator")
                         .arg("theil_sen")
                         .arg("spiral")
+                        .arg("binary")
                         .arg("ols"),
                 )
                 .arg(
@@ -261,13 +262,14 @@ fn main() {
                         .action(ArgAction::SetTrue)
                         .long("power")
                         .help(
-                            "Tries to fit a curve defined by the equation `a * x^b` to the data.\
-                    If any of the predictors are below 1, x becomes (x+c), \
-                    where c is an offset to the predictors. \
-                    \
-                    This is due to the arithmetic issue of taking the \
-                    log of negative numbers and 0. A negative addition term \
-                    will be appended if any of the outcomes are below 1.",
+                            "Tries to fit a curve defined by \
+                            the equation `a * x^b` to the data.\
+                            If any of the predictors are below 1, x becomes (x+c), \
+                            where c is an offset to the predictors. \
+                            \
+                            This is due to the arithmetic issue of taking the \
+                            log of negative numbers and 0. A negative addition term \
+                            will be appended if any of the outcomes are below 1.",
                         ),
                 )
                 .arg(
@@ -277,7 +279,8 @@ fn main() {
                         .long("exponential")
                         .action(ArgAction::SetTrue)
                         .help(
-                            "Tries to fit a curve defined by the equation `a * b^x` to the data. \
+                            "Tries to fit a curve defined by the \
+                            equation `a * b^x` to the data. \
                             If any of the predictors are below 1, x becomes (x+c), \
                             where c is an offset to the predictors. \
                             \
@@ -374,7 +377,10 @@ fn main() {
                 .arg(
                     Arg::new("trig_freq")
                         .long("trig-frequency-limit")
-                        .help("Set the limit for frequency of the fitted trigonometric function.")
+                        .help(
+                            "Set the limit for frequency of the \
+                              fitted trigonometric function.",
+                        )
                         .requires("trig")
                         .default_value("1.0")
                         .value_parser(|v: &str| {
@@ -412,6 +418,27 @@ fn main() {
                         ),
                 )
                 .arg(
+                    Arg::new("spiral_level")
+                        .long("spiral-level")
+                        .help(
+                            "Speed preset of spiral estimator. Lower are faster, \
+                            but increase the risk of invalid output. \
+                            You can expect a 2-4x decrease in performance \
+                            for each additional level. \
+                            Regressions with 3 variables require a higher level. \
+                            The performance of these presets may change at any time.",
+                        )
+                        .requires("required_spiral")
+                        .num_args(1)
+                        .default_value("5")
+                        .value_parser(|v: &str| {
+                            parse::<u8>(v)
+                                .filter(|v| (1..=9).contains(v))
+                                .ok_or("spiral-level has to be in range [1..=9]")
+                        })
+                        .value_hint(ValueHint::Other),
+                )
+                .arg(
                     Arg::new("descent")
                         .long("gradient-descent")
                         .short('g')
@@ -434,27 +461,6 @@ fn main() {
                         ),
                 )
                 .arg(
-                    Arg::new("spiral_level")
-                        .long("spiral-level")
-                        .help(
-                            "Speed preset of spiral estimator. Lower are faster, \
-                            but increase the risk of invalid output. \
-                            You can expect a 2-4x decrease in performance \
-                            for each additional level. \
-                            Regressions with 3 variables require a higher level. \
-                            The performance of these presets may change at any time.",
-                        )
-                        .requires("required_spiral")
-                        .num_args(1)
-                        .default_value("5")
-                        .value_parser(|v: &str| {
-                            parse::<u8>(v)
-                                .filter(|v| (1..=9).contains(v))
-                                .ok_or("spiral-level has to be in range [1..=9]")
-                        })
-                        .value_hint(ValueHint::Other),
-                )
-                .arg(
                     Arg::new("simultaneous_level")
                         .long("simultaneous-accuracy")
                         .help(
@@ -472,6 +478,38 @@ fn main() {
                                 .ok_or("simultaneous-accuracy needs to be a number")
                         })
                         .value_hint(ValueHint::Other),
+                )
+                .arg(
+                    Arg::new("binary")
+                        .long("binary-search")
+                        .short('b')
+                        .action(ArgAction::SetTrue)
+                        .help(
+                            "Use the binary search estimator instead of OLS for all models \
+                            A good result isn't guaranteed. Linear time complexity.",
+                        ),
+                )
+                .arg(
+                    Arg::new("binary_precise")
+                        .long("binary-full-precision")
+                        .action(ArgAction::SetTrue)
+                        .help(
+                            "Get the full precision of 64-bit \
+                            floats when calculating the binary-search",
+                        )
+                        .requires("binary"),
+                )
+                .arg(
+                    Arg::new("binary_iterations")
+                        .long("binary-iterations")
+                        .num_args(1)
+                        .help(
+                            "Number of iterations for the binary search. \
+                            Increasing this value is good in situations \
+                            with many variables which are dependant.",
+                        )
+                        .value_parser(clap::value_parser!(usize))
+                        .default_value("100"),
                 )
                 .arg(
                     Arg::new("plot")
@@ -606,6 +644,21 @@ fn main() {
                         .expect("we've provided a default value and validator");
                     std_dev::regression::spiral::Options::new(level)
                 };
+                let binary_options = {
+                    let iterations = *config
+                        .get_one("binary_iterations")
+                        .expect("we've provided a default value and validator");
+                    let max_precision = config.get_flag("binary_precise");
+                    let c = BinarySearchOptions {
+                        iterations,
+                        ..Default::default()
+                    };
+                    if max_precision {
+                        c.max_precision()
+                    } else {
+                        c
+                    }
+                };
                 let trig_freq: f64 = *config
                     .get_one("trig_freq")
                     .expect("we provided a default value and have a validator");
@@ -619,6 +672,8 @@ fn main() {
                         GradientDescentSimultaneousOptions::new(1e-6).boxed_linear()
                     } else if config.get_flag("spiral") {
                         spiral_options.clone().boxed_linear()
+                    } else if config.get_flag("binary") {
+                        binary_options.boxed_linear()
                     } else {
                         #[cfg(feature = "ols")]
                         {
@@ -637,6 +692,8 @@ fn main() {
                 let model = if config.get_flag("power") {
                     if config.get_flag("spiral") {
                         spiral_options.model_power(&x, &y).boxed()
+                    } else if config.get_flag("binary") {
+                        binary_options.model_power(&x, &y).boxed()
                     } else {
                         std_dev::regression::derived::power(&mut x, &mut y, &&*linear_estimator)
                             .boxed()
@@ -644,6 +701,8 @@ fn main() {
                 } else if config.get_flag("exponential") {
                     if config.get_flag("spiral") {
                         spiral_options.model_exponential(&x, &y).boxed()
+                    } else if config.get_flag("binary") {
+                        binary_options.model_exponential(&x, &y).boxed()
                     } else {
                         std_dev::regression::derived::exponential(
                             &mut x,
@@ -660,21 +719,47 @@ fn main() {
                         )
                         .model_logistic(&x, &y)
                         .boxed()
-                    } else {
+                    } else if config.get_flag("spiral") {
                         spiral_options.model_logistic(&x, &y).boxed()
+                    } else {
+                        binary_options.model_logistic(&x, &y).boxed()
                     }
                 } else if config.get_flag("sin") {
-                    spiral_options.model_sine(&x, &y, trig_freq).boxed()
+                    if config.get_flag("spiral") {
+                        spiral_options.model_sine(&x, &y, trig_freq).boxed()
+                    } else {
+                        binary_options.model_sine(&x, &y, trig_freq).boxed()
+                    }
                 } else if config.get_flag("cos") {
-                    spiral_options.model_cosine(&x, &y, trig_freq).boxed()
+                    if config.get_flag("spiral") {
+                        spiral_options.model_cosine(&x, &y, trig_freq).boxed()
+                    } else {
+                        binary_options.model_sine(&x, &y, trig_freq).boxed()
+                    }
                 } else if config.get_flag("tan") {
-                    spiral_options.model_tangent(&x, &y, trig_freq).boxed()
+                    if config.get_flag("spiral") {
+                        spiral_options.model_tangent(&x, &y, trig_freq).boxed()
+                    } else {
+                        binary_options.model_sine(&x, &y, trig_freq).boxed()
+                    }
                 } else if config.get_flag("sec") {
-                    spiral_options.model_secant(&x, &y, trig_freq).boxed()
+                    if config.get_flag("spiral") {
+                        spiral_options.model_secant(&x, &y, trig_freq).boxed()
+                    } else {
+                        binary_options.model_sine(&x, &y, trig_freq).boxed()
+                    }
                 } else if config.get_flag("csc") {
-                    spiral_options.model_cosecant(&x, &y, trig_freq).boxed()
+                    if config.get_flag("spiral") {
+                        spiral_options.model_cosecant(&x, &y, trig_freq).boxed()
+                    } else {
+                        binary_options.model_sine(&x, &y, trig_freq).boxed()
+                    }
                 } else if config.get_flag("cot") {
-                    spiral_options.model_cotangent(&x, &y, trig_freq).boxed()
+                    if config.get_flag("spiral") {
+                        spiral_options.model_cotangent(&x, &y, trig_freq).boxed()
+                    } else {
+                        binary_options.model_sine(&x, &y, trig_freq).boxed()
+                    }
                 } else if config.get_flag("linear") || config.get_one::<usize>("degree").is_some() {
                     let degree = {
                         if let Some(degree) = config.get_one("degree") {
@@ -707,6 +792,8 @@ fn main() {
                                     spiral_polynomial_degree_error.exit();
                                 }
                                 spiral_options.clone().boxed_polynomial()
+                            } else if config.get_flag("binary") {
+                                binary_options.boxed_polynomial()
                             } else {
                                 #[cfg(feature = "ols")]
                                 {

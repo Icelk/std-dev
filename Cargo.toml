@@ -34,18 +34,25 @@ clap = { version = "4.0", optional = true, features = ["cargo"] }
 clap_autocomplete = { version = "0.4", optional = true }
 poloto = { version = "16", optional = true, default-features = false }
 hypermelon = "0.4.0"
+rand_xorshift = { version = "0.3.0", optional = true }
 
 [features]
-default = ["bin", "pretty", "completion", "regression", "ols", "percentile-rand", "simplify-fraction", "generic-impls"]
+default = ["bin", "pretty", "completion", "regression", "ols", "percentile-rand", "simplify-fraction", "generic-impls", "binary_search_rng", "random_subset_regression"]
 
 # Very commonly used features
-base = ["percentile-rand", "simplify-fraction", "generic-impls"]
+base = ["percentile-rand", "simplify-fraction", "binary_search_rng", "generic-impls"]
 
 ##
 # Library features (also applies to binary)
 ##
 
 regression = []
+
+# Enables the random support of the binary search estimator (recommended)
+binary_search_rng = ["rand", "rand_xorshift"]
+
+# Enables speedier regression by only considering random subsets of data
+random_subset_regression = ["rand"]
 
 # Enables the Ordinary Least Squares estimator.
 #
@@ -74,7 +81,7 @@ generic-impls = ["num-traits"]
 # Binary features
 ##
 
-bin = ["clap", "poloto"]
+bin = ["clap", "poloto", "regression", "binary_search_rng", "ols"]
 
 # Prettier bin output
 pretty = ["bin", "atty", "colored"]
