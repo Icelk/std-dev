@@ -2405,8 +2405,8 @@ pub mod theil_sen {
 /// ## Robustness
 ///
 /// Since this uses a fitness function, the robustness is determined by that. Using the "default"
-/// [`spiral::manhattan_distance`] gives good results. This is what the implementations for
-/// [`spiral::Options`] does.
+/// `manhattan_distance` gives good results (think least squares, but without the squared
+/// importance of errors). This is what the implementations for [`spiral::Options`] does.
 ///
 /// Since this tests a wide range of possibilities before deciding on one, it's very likely we
 /// don't get trapped in a local maxima.
@@ -2580,9 +2580,8 @@ pub mod spiral {
     /// Options for the spiral.
     ///
     /// This also implements most [estimator](models) traits.
-    /// These all use the [`manhattan_distance`] as their fitness function.
+    /// These all use the manhattan distance as their fitness function.
     /// The estimators have `O(n)` runtime performance and `O(1)` size performance.
-    /// See the [`estimators`] module for more advanced usages.
     ///
     /// > Polynomial estimator only supports degrees 1 & 2.
     ///
@@ -2834,7 +2833,7 @@ pub mod spiral {
     }
 
     /// Implements [`LogisticEstimator`] with a known ceiling for the input values.
-    /// Uses [`manhattan_distance`] as the fitness function.
+    /// Uses manhattan distance as the fitness function.
     ///
     /// This can be used to model logistic growth with a known max.
     #[derive(Debug, Clone, PartialEq)]
