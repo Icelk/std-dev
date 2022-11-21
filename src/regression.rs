@@ -3390,10 +3390,39 @@ pub mod binary_search {
                         let center_under = center / factor;
                         let value_over = center_over - 1.0;
                         let value_under = center_under - 1.0;
+
+                        let value_negative = -value_under;
+                        values[i] = value_negative;
+                        let fitness_negative = fitness_function(values.borrow());
+
                         values[i] = value_over;
                         let fitness_over = fitness_function(values.borrow());
                         values[i] = value_under;
                         let fitness_under = fitness_function(values.borrow());
+                        let best_current_sign = fitness_over.min(fitness_under);
+
+                        // if negative is optimal
+                        if fitness_negative < best_current_sign {
+                            values[i] = -value_over;
+                            let fitness_negative_over = fitness_function(values.borrow());
+                            values[i] = -value_under;
+                            let fitness_negative_under = fitness_function(values.borrow());
+
+                            let best_opposite_sign =
+                                fitness_negative_over.min(fitness_negative_under);
+                            if best_opposite_sign < best_current_sign {
+                                if fitness_negative_under < fitness_negative_over {
+                                    center = -center_under;
+                                // values[i] = -value_under already set
+                                } else {
+                                    center = -center_over;
+                                    values[i] = -value_over;
+                                }
+                                centers[i] = center;
+                                continue;
+                            }
+                        }
+
                         if !fitness_over.is_finite() || fitness_under < fitness_over {
                             center = center_under;
                             // values[i] = value_under already set
@@ -3472,14 +3501,8 @@ pub mod binary_search {
                         let center_under = center / factor;
                         let value_over = center_over - 1.0;
                         let value_under = center_under - 1.0;
+
                         let value_negative = -value_under;
-
-                        // values[i] = -value_over;
-                        // let fitness_negative_over = fitness_function(values.borrow());
-                        // values[i] = -value_under;
-                        // let fitness_negative_under = fitness_function(values.borrow());
-                        // let best_opposite_sign = fitness_negative_under.min(fitness_negative_over);
-
                         values[i] = value_negative;
                         let fitness_negative = fitness_function(values.borrow());
 
@@ -3491,7 +3514,7 @@ pub mod binary_search {
                         let fitness_under = fitness_function(values.borrow());
                         let best_current_sign = fitness_under.min(fitness_over);
 
-                        // negative is optimal
+                        // if negative is optimal
                         if fitness_negative < best_current_sign {
                             values[i] = -value_over;
                             let fitness_negative_over = fitness_function(values.borrow());
@@ -3512,9 +3535,6 @@ pub mod binary_search {
                                 continue;
                             }
                         }
-                        // #[allow(clippy::collapsible_else_if)] // consistency
-                        // if !best_opposite_sign.is_finite() || best_current_sign < best_opposite_sign
-                        // {
                         if !fitness_over.is_finite() || fitness_under < fitness_over {
                             center = center_under;
                             // values[i] = value_under already set
@@ -3522,16 +3542,6 @@ pub mod binary_search {
                             center = center_over;
                             values[i] = value_over;
                         }
-                        // } else {
-                        // println!("Change sign");
-                        // if !fitness_negative_over.is_finite() || fitness_negative_under < fitness_negative_over {
-                        // center = -center_under;
-                        // values[i] = -value_under;
-                        // } else {
-                        // center = -center_over;
-                        // values[i] = -value_over;
-                        // }
-                        // }
                         centers[i] = center;
                     }
                 }
