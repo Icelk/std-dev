@@ -2872,6 +2872,8 @@ pub mod spiral {
     }
 }
 
+/// Assumes the fitness function has a minimal slope when the value is optimal (i.e. e.g.
+/// `(x-4.).abs()` will not work, since it's slope is constant and then changes sign)
 #[allow(missing_docs)]
 pub mod gradient_descent {
     use super::*;
@@ -3191,13 +3193,12 @@ pub mod binary_search {
         /// compile time.
         type Data;
         /// The structure that's given to the fitness function.
+        /// Needs to have the same length as the `.as_ref()` implementation of this struct.
         type Given<'a>: AsRef<[f64]>
         where
             Self: 'a;
         /// Creates a new storage filled with `num`.
         fn new_filled(data: &Self::Data, num: f64) -> Self;
-        /// How many variables we are optimizing.
-        fn len(&self) -> usize;
         /// Borrow the current variables.
         fn borrow(&self) -> Self::Given<'_>;
     }
@@ -3206,9 +3207,6 @@ pub mod binary_search {
         type Given<'a> = [f64; LENGTH];
         fn new_filled(_data: &(), num: f64) -> Self {
             [num; LENGTH]
-        }
-        fn len(&self) -> usize {
-            LENGTH
         }
         fn borrow(&self) -> Self::Given<'_> {
             *self
@@ -3224,9 +3222,6 @@ pub mod binary_search {
         type Given<'a> = &'a [f64];
         fn new_filled(data: &Self::Data, num: f64) -> Self {
             vec![num; data.0]
-        }
-        fn len(&self) -> usize {
-            Vec::len(self)
         }
         fn borrow(&self) -> Self::Given<'_> {
             self
@@ -3332,11 +3327,10 @@ pub mod binary_search {
         fn default() -> Self {
             Self {
                 iterations: 10,
-                // precision: 59,
                 precision: 30,
                 max: f64::MAX,
                 #[cfg(feature = "random_subset_regression")]
-                random_subset_regression: None,
+                random_subset_regression: Some(Default::default()),
             }
         }
     }
@@ -3378,7 +3372,7 @@ pub mod binary_search {
                 )
             };
             let mut centers = NV::new_filled(&data, initial_center);
-            let n = values.len();
+            let n = values.as_ref().len();
 
             for _ in 0..self.iterations {
                 // reset centers
@@ -3453,17 +3447,17 @@ pub mod binary_search {
             let mut best_fitness = f64::MAX;
             let mut best_values = values.clone();
 
-            let n = values.len();
+            let n = values.as_ref().len();
 
             for iter in 0..self.iterations {
                 // reset centers
                 for c in centers.as_mut() {
-                    *c = initial_center;
+                    *c = initial_center * c.signum();
                 }
                 // decrease randomness at the end
                 let progress = 1.0 - iter as f64 / self.iterations as f64;
                 // gen f32 since that takes less bytes
-                let rng_factor = 1. + (2.0 * rng.gen::<f32>() as f64 - 1.) * 0.1 * progress;
+                let rng_factor = 1. + (2.0 * rng.gen::<f32>() as f64 - 1.) * 0.01 * progress;
 
                 // for each precision level (`for _ in 0..self.precision`, see note at definition
                 // of `factors`)
@@ -3478,10 +3472,49 @@ pub mod binary_search {
                         let center_under = center / factor;
                         let value_over = center_over - 1.0;
                         let value_under = center_under - 1.0;
+                        let value_negative = -value_under;
+
+                        // values[i] = -value_over;
+                        // let fitness_negative_over = fitness_function(values.borrow());
+                        // values[i] = -value_under;
+                        // let fitness_negative_under = fitness_function(values.borrow());
+                        // let best_opposite_sign = fitness_negative_under.min(fitness_negative_over);
+
+                        values[i] = value_negative;
+                        let fitness_negative = fitness_function(values.borrow());
+
                         values[i] = value_over;
                         let fitness_over = fitness_function(values.borrow());
+                        // micro-optimization: we check the value_under last, so we don't have to
+                        // set it again. This is optimal, because value_under is most likely
                         values[i] = value_under;
                         let fitness_under = fitness_function(values.borrow());
+                        let best_current_sign = fitness_under.min(fitness_over);
+
+                        // negative is optimal
+                        if fitness_negative < best_current_sign {
+                            values[i] = -value_over;
+                            let fitness_negative_over = fitness_function(values.borrow());
+                            values[i] = -value_under;
+                            let fitness_negative_under = fitness_function(values.borrow());
+
+                            let best_opposite_sign =
+                                fitness_negative_over.min(fitness_negative_under);
+                            if best_opposite_sign < best_current_sign {
+                                if fitness_negative_under < fitness_negative_over {
+                                    center = -center_under;
+                                // values[i] = -value_under already set
+                                } else {
+                                    center = -center_over;
+                                    values[i] = -value_over;
+                                }
+                                centers[i] = center;
+                                continue;
+                            }
+                        }
+                        // #[allow(clippy::collapsible_else_if)] // consistency
+                        // if !best_opposite_sign.is_finite() || best_current_sign < best_opposite_sign
+                        // {
                         if !fitness_over.is_finite() || fitness_under < fitness_over {
                             center = center_under;
                             // values[i] = value_under already set
@@ -3489,6 +3522,16 @@ pub mod binary_search {
                             center = center_over;
                             values[i] = value_over;
                         }
+                        // } else {
+                        // println!("Change sign");
+                        // if !fitness_negative_over.is_finite() || fitness_negative_under < fitness_negative_over {
+                        // center = -center_under;
+                        // values[i] = -value_under;
+                        // } else {
+                        // center = -center_over;
+                        // values[i] = -value_over;
+                        // }
+                        // }
                         centers[i] = center;
                     }
                 }
@@ -3772,6 +3815,23 @@ pub mod binary_search {
                 coeffs.determination_slice(&x, &y),
                 now.elapsed()
             );
+        }
+        #[test]
+        #[cfg(feature = "binary_search_rng")]
+        fn two_variable_optimization() {
+            use rand::SeedableRng;
+            // init thread rng
+
+            let mut rng = rand_xorshift::XorShiftRng::from_rng(rand::thread_rng()).unwrap();
+            let now = std::time::Instant::now();
+            let coeffs = Options::default()
+                .max_precision()
+                .n_variable_optimization::<[f64; 2]>(
+                    |[v1, v2]| (v1 - 5.959).abs() + (v2 - (-234.234)).abs(),
+                    (),
+                    &mut rng,
+                );
+            println!("{coeffs:?} {:?}", now.elapsed());
         }
     }
 }
