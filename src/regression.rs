@@ -3319,6 +3319,11 @@ pub mod binary_search {
         pub precision: usize,
         /// The assumed max value. Use `f64::MAX` to cover the whole range of `f64`.
         pub max: f64,
+        /// The factor for the randomness introduced when binary searching.
+        /// Higher values result in finding more optimal values, but can also make it hard for the
+        /// algorithm to find a good value.
+        #[cfg(feature = "binary_search_rng")]
+        pub randomness_factor: f64,
         /// Config for using [`random_subset_regression`].
         #[cfg(feature = "random_subset_regression")]
         pub random_subset_regression: Option<random_subset_regression::Config>,
@@ -3326,9 +3331,11 @@ pub mod binary_search {
     impl Default for Options {
         fn default() -> Self {
             Self {
-                iterations: 10,
+                iterations: 30,
                 precision: 30,
                 max: f64::MAX,
+                #[cfg(feature = "binary_search_rng")]
+                randomness_factor: 1.,
                 #[cfg(feature = "random_subset_regression")]
                 random_subset_regression: Some(Default::default()),
             }
@@ -3371,20 +3378,13 @@ pub mod binary_search {
                         .collect::<Vec<_>>(),
                 )
             };
-            let mut centers = NV::new_filled(&data, initial_center);
             let n = values.as_ref().len();
 
             for _ in 0..self.iterations {
-                // reset centers
-                for c in centers.as_mut() {
-                    *c = initial_center;
-                }
-
-                // for each precision level
-                for factor in factors.as_ref() {
-                    // in every precision level, update the centers of all variabels
-                    for i in 0..n {
-                        let mut center = centers[i];
+                for i in 0..n {
+                    let mut center = initial_center;
+                    // for each precision level
+                    for factor in factors.as_ref() {
                         // -1 to get 0 (the repeated division by sqrt approaches 1)
                         let center_over = center * factor;
                         let center_under = center / factor;
@@ -3418,7 +3418,6 @@ pub mod binary_search {
                                     center = -center_over;
                                     values[i] = -value_over;
                                 }
-                                centers[i] = center;
                                 continue;
                             }
                         }
@@ -3430,7 +3429,6 @@ pub mod binary_search {
                             center = center_over;
                             values[i] = value_over;
                         }
-                        centers[i] = center;
                     }
                 }
             }
@@ -3469,8 +3467,6 @@ pub mod binary_search {
                         .collect::<Vec<_>>(),
                 )
             };
-            // keep track of & store all centers
-            let mut centers = NV::new_filled(&data, initial_center);
 
             // track best values
             let mut best_fitness = f64::MAX;
@@ -3479,23 +3475,19 @@ pub mod binary_search {
             let n = values.as_ref().len();
 
             for iter in 0..self.iterations {
-                // reset centers
-                for c in centers.as_mut() {
-                    *c = initial_center * c.signum();
-                }
                 // decrease randomness at the end
                 let progress = 1.0 - iter as f64 / self.iterations as f64;
                 // gen f32 since that takes less bytes
-                let rng_factor = 1. + (2.0 * rng.gen::<f32>() as f64 - 1.) * 0.01 * progress;
+                let rng_factor =
+                    1. + (2.0 * rng.gen::<f32>() as f64 - 1.) * self.randomness_factor * progress;
 
-                // for each precision level (`for _ in 0..self.precision`, see note at definition
-                // of `factors`)
-                for factor in factors.as_ref() {
-                    let factor = factor * rng_factor;
-
-                    // in every precision level, update the centers of all variabels
-                    for i in 0..n {
-                        let mut center = centers[i];
+                // for each variable to optimize
+                for i in 0..n {
+                    let mut center = initial_center;
+                    // for each precision level (`for _ in 0..self.precision`, see note at definition
+                    // of `factors`)
+                    for factor in factors.as_ref() {
+                        let factor = factor * rng_factor;
                         // -1 to get 0 (the repeated division by sqrt approaches 1)
                         let center_over = center * factor;
                         let center_under = center / factor;
@@ -3531,7 +3523,6 @@ pub mod binary_search {
                                     center = -center_over;
                                     values[i] = -value_over;
                                 }
-                                centers[i] = center;
                                 continue;
                             }
                         }
@@ -3542,7 +3533,6 @@ pub mod binary_search {
                             center = center_over;
                             values[i] = value_over;
                         }
-                        centers[i] = center;
                     }
                 }
 

@@ -503,13 +503,30 @@ fn main() {
                     Arg::new("binary_iterations")
                         .long("binary-iterations")
                         .num_args(1)
+                        .requires("binary")
                         .help(
                             "Number of iterations for the binary search. \
                             Increasing this value is good in situations \
                             with many variables which are dependant.",
                         )
                         .value_parser(clap::value_parser!(usize))
-                        .default_value("100"),
+                        .default_value("30"),
+                )
+                .arg(
+                    Arg::new("binary_randomness")
+                        .long("binary-randomness")
+                        .num_args(1)
+                        .requires("binary")
+                        .help(
+                            "Randomness factor in binary search.\
+                            Larger values yield better and possibly more inconsistent results.",
+                        )
+                        .value_parser(|v: &str| {
+                            parse::<f64>(v)
+                                .filter(|v| *v <= 1. && *v > 0.)
+                                .ok_or("--binary-randomness needs to be a number under 1.")
+                        })
+                        .default_value("1.0"),
                 )
                 .arg(
                     Arg::new("plot")
@@ -648,9 +665,13 @@ fn main() {
                     let iterations = *config
                         .get_one("binary_iterations")
                         .expect("we've provided a default value and validator");
+                    let randomness = *config
+                        .get_one("binary_randomness")
+                        .expect("we've provided a default value and validator");
                     let max_precision = config.get_flag("binary_precise");
                     let c = BinarySearchOptions {
                         iterations,
+                        randomness_factor: randomness,
                         ..Default::default()
                     };
                     if max_precision {
