@@ -881,9 +881,8 @@ fn main() {
                         .into_iter()
                         .map(|current| (current as f64 / (num_samples - 1) as f64) * range + x_min);
 
-                    let line = poloto::build::plot(format!("{model:.*}", p.unwrap_or(2)))
-                        .line()
-                        .cloned(x.map(|x| {
+                    let line = poloto::build::plot(format!("{model:.*}", p.unwrap_or(2))).line(
+                        x.map(|x| {
                             let y = model.predict_outcome(x);
                             (
                                 x,
@@ -894,10 +893,10 @@ fn main() {
                                     f64::NAN
                                 },
                             )
-                        }));
+                        }),
+                    );
                     let scatter = poloto::build::plot("".to_owned())
-                        .scatter()
-                        .cloned(x_iter.clone().zip(y_iter.clone()));
+                        .scatter(x_iter.clone().zip(y_iter.clone()));
                     let determination = poloto::build::plot(format!(
                         "R² = {:.4}",
                         model.determination(x_iter, y_iter, len)
