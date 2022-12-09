@@ -244,6 +244,9 @@ pub mod models {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             let mut first = true;
             for (degree, mut coefficient) in self.coefficients.iter().copied().enumerate().rev() {
+                if coefficient.abs() < 1e-100 {
+                    continue;
+                }
                 if !first {
                     if coefficient.is_sign_positive() {
                         write!(f, " + ")?;
@@ -258,7 +261,8 @@ pub mod models {
                 match degree {
                     0 => write!(f, "{coefficient:.*}", p)?,
                     1 => write!(f, "{coefficient:.*}x", p)?,
-                    _ => write!(f, "{coefficient:.0$}x^{degree:.0$}", p)?,
+                    2..=9 => write!(f, "{coefficient:.0$}x^{degree:.0$}", p)?,
+                    _ => write!(f, "{coefficient:.0$}x^{{{degree:.0$}}}", p)?,
                 }
 
                 first = false;
