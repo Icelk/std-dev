@@ -300,6 +300,28 @@ pub mod models {
                 }
             }
         }
+
+        /// Returns the coefficients for the derivative of these coefficients.
+        pub fn derivative(&self) -> Self {
+            let mut coeffs = Vec::with_capacity(self.len().saturating_sub(1));
+            for (idx, coeff) in self.coefficients.iter().enumerate().skip(1) {
+                coeffs.push(*coeff * (idx) as f64);
+            }
+            Self {
+                coefficients: coeffs,
+            }
+        }
+        /// Returns the coefficients for the integral (primitive function) of these coefficients.
+        pub fn integral(&self) -> Self {
+            let mut coeffs = Vec::with_capacity(self.len() + 1);
+            coeffs.push(0.);
+            for (idx, coeff) in self.coefficients.iter().enumerate() {
+                coeffs.push(*coeff / (idx + 1) as f64);
+            }
+            Self {
+                coefficients: coeffs,
+            }
+        }
     }
     impl Predictive for PolynomialCoefficients {
         #[cfg(feature = "arbitrary-precision")]
