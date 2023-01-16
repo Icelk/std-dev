@@ -21,7 +21,7 @@ num-traits = { version = "0.2", default-features = false, features = ["std"], op
 
 nalgebra = { version = "0.31", optional = true }
 
-simba = { version = "0.7", optional = true, default-features = false }
+simba = { version = "0.8", optional = true, default-features = false }
 approx = { version = "0.5", optional = true, default-features = false }
 rug = { version = "1.15", optional = true }
 
