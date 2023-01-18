@@ -1179,7 +1179,7 @@ pub mod arbitrary_linear_algebra {
     }
     impl num_traits::Signed for FloatWrapper {
         fn abs(&self) -> Self {
-            self.0.as_abs().to_owned().into()
+            (*self.0.as_abs()).clone().into()
         }
         fn abs_sub(&self, other: &Self) -> Self {
             if self.0 <= other.0 {
