@@ -939,7 +939,7 @@ fn main() {
                             "plot.svg".into()
                         };
                         let mut file =
-                            std::fs::File::create(&path).expect("failed to create plot file");
+                            std::fs::File::create(path).expect("failed to create plot file");
                         file.write_all(data.as_bytes())
                             .expect("failed to write plot file");
                     }
