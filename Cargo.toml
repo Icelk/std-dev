@@ -25,9 +25,6 @@ simba = { version = "0.8", optional = true, default-features = false }
 approx = { version = "0.5", optional = true, default-features = false }
 rug = { version = "1.15", optional = true }
 
-primal-sieve = { version = "0.3.2", optional = true }
-iter-set = { version = "2.0", optional = true }
-
 colored = { version = "2.0", optional = true }
 atty = { version = "0.2.14", optional = true }
 clap = { version = "4.0", optional = true, features = ["cargo"] }
@@ -37,10 +34,10 @@ hypermelon = "0.4.0"
 rand_xorshift = { version = "0.3.0", optional = true }
 
 [features]
-default = ["bin", "pretty", "completion", "regression", "ols", "percentile-rand", "simplify-fraction", "generic-impls", "binary_search_rng", "random_subset_regression"]
+default = ["bin", "pretty", "completion", "regression", "ols", "percentile-rand", "generic-impls", "binary_search_rng", "random_subset_regression"]
 
 # Very commonly used features
-base = ["percentile-rand", "simplify-fraction", "binary_search_rng", "generic-impls"]
+base = ["percentile-rand", "binary_search_rng", "generic-impls"]
 
 ##
 # Library features (also applies to binary)
@@ -68,10 +65,6 @@ arbitrary-precision = ["rug", "simba", "regression", "num-traits", "num-traits/s
 
 # Enables the recommended pivot_fn for `percentile::*` functions.
 percentile-rand = ["rand"]
-
-# Allows input of fractions which are not fully simplified.
-# Also enables Eq and Ord implementations for fractions.
-simplify-fraction = ["primal-sieve", "iter-set"]
 
 # Allows for generic implementation of traits from this crate.
 generic-impls = ["num-traits"]

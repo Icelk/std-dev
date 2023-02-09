@@ -125,7 +125,7 @@ pub trait OrderedListIndex {
     fn index(&self, len: usize) -> MeanValue<usize>;
 }
 
-/// A fraction.
+/// A simplified fraction.
 /// This is used to get a percentile from any function in this module.
 ///
 /// We use two methods of getting the index in a list.
@@ -137,14 +137,11 @@ pub trait OrderedListIndex {
 ///
 /// # Eq & Ord
 ///
-/// You have to enable the `simplify-fraction` to get [`Eq`], [`PartialEq`], [`Ord`], and
-/// [`PartialOrd`] implementations.
-/// This is due to not knowing if the input to [`Self::new`] is fully simplified. Since we have to
-/// use prime factorization to find out, this is an optional feature.
+/// These are implemented to follow the expected ordering.
 #[derive(Debug, Clone, Copy)]
 pub struct Fraction {
-    pub numerator: usize,
-    pub denominator: usize,
+    pub numerator: u64,
+    pub denominator: u64,
 }
 impl Fraction {
     pub const HALF: Self = Self {
@@ -159,20 +156,13 @@ impl Fraction {
         numerator: 3,
         denominator: 4,
     };
-    /// If the feature `simplify-fraction` isn't enabled (it is by default), this MUST be the shortest form.
-    ///
-    /// If the feature `simplify-fraction` is enabled, this [simplifies](Self::simplify) the
-    /// fraction.
-    /// This has to compute the primes up to `max(numerator, denominator).sqrt()`, so don't run it
-    /// in a loop.
+    /// Create a new fraction. This function also simplifies the fraction.
     ///
     /// # Panics
     ///
     /// Panics if `numerator > denominator`.
     #[inline]
-    pub fn new(numerator: usize, denominator: usize) -> Self {
-        assert!(numerator <= denominator);
-        #[cfg(feature = "simplify-fraction")]
+    pub fn new(numerator: u64, denominator: u64) -> Self {
         {
             Self {
                 numerator,
@@ -180,60 +170,32 @@ impl Fraction {
             }
             .simplify()
         }
-        #[cfg(not(feature = "simplify-fraction"))]
-        {
-            Self {
-                numerator,
-                denominator,
-            }
-        }
     }
 
-    /// This has to compute the primes up to `max(numerator, denominator).sqrt()`, so don't run it
-    /// in a loop.
-    #[cfg(feature = "simplify-fraction")]
-    pub fn simplify(self) -> Self {
-        fn cluster_to_iter<T: Copy>(slice: &[(T, usize)]) -> impl Iterator<Item = T> + '_ {
-            slice
-                .iter()
-                .flat_map(|(num, count)| std::iter::repeat(*num).take(*count))
-        }
+    /// Euklides' algorithm
+    #[inline]
+    fn simplify(self) -> Self {
+        let mut x = self.numerator;
+        let mut remainder = self.denominator;
+        let gcd = loop {
+            let tmp = x % remainder;
+            if tmp == 0 {
+                break remainder;
+            }
+            x = remainder;
+            remainder = tmp;
+        };
 
-        if self.numerator == 0 {
-            return Self {
-                numerator: 0,
-                denominator: 1,
-            };
-        }
-        if self.denominator == 0 {
-            panic!("denominator is 0");
-        }
-        // +1 for truncation and precision loss.
-        let limit = (self.numerator.max(self.denominator) as f64).sqrt() as usize + 1;
-        let sieve = primal_sieve::Sieve::new(limit);
-        // UNWRAP: We have enough values.
-        let mut num_facs = sieve.factor(self.numerator).unwrap();
-        num_facs.sort_unstable_by_key(|(num, _count)| *num);
-        // UNWRAP: We have enough values.
-        let mut den_facs = sieve.factor(self.denominator).unwrap();
-        den_facs.sort_unstable_by_key(|(num, _count)| *num);
-
-        let num_iter = cluster_to_iter(&num_facs);
-        let den_iter = cluster_to_iter(&den_facs);
-
-        let both_divisible_by = iter_set::intersection(num_iter, den_iter).product::<usize>();
-        debug_assert_eq!(self.numerator % both_divisible_by, 0);
-        debug_assert_eq!(self.denominator % both_divisible_by, 0);
         Self {
-            numerator: self.numerator / both_divisible_by,
-            denominator: self.denominator / both_divisible_by,
+            numerator: self.numerator / gcd,
+            denominator: self.denominator / gcd,
         }
     }
 }
 impl OrderedListIndex for Fraction {
     fn index(&self, len: usize) -> MeanValue<usize> {
         assert!(self.numerator <= self.denominator);
-        fn assert_not_zero(denominator: usize) {
+        fn assert_not_zero(denominator: u64) {
             assert_ne!(denominator, 0);
         }
         assert_not_zero(self.denominator);
@@ -263,31 +225,26 @@ impl OrderedListIndex for Fraction {
         // exception for when self.denominator.is_power_of_two(), as we want quartiles and median
         // to be the mean of two values sometimes.
         if self.denominator == 1 {
-            MeanValue::Single(self.numerator)
+            MeanValue::Single(self.numerator as _)
         } else if self.denominator.is_power_of_two() {
             power_of_two(*self, len)
         } else {
             // ceil(len * percentile) - 1
-            let m = len * self.numerator;
-            let rem = m % self.denominator;
+            let m = len * self.numerator as usize;
+            let rem = m % self.denominator as usize;
             let rem = usize::from(rem > 1);
-            MeanValue::Single((m / self.denominator + rem - 1).min(len))
+            MeanValue::Single((m / self.denominator as usize + rem - 1).min(len))
         }
     }
 }
 
-#[cfg(feature = "simplify-fraction")]
 impl PartialEq for Fraction {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        // we don't need to simplify, as [`Self::new`] always does it, there's no way to not get a
-        // simplified `Fraction`.
-        self.numerator == other.numerator && self.denominator == other.denominator
+        self.cmp(other).is_eq()
     }
 }
-#[cfg(feature = "simplify-fraction")]
 impl Eq for Fraction {}
-#[cfg(feature = "simplify-fraction")]
 impl Ord for Fraction {
     #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
@@ -302,7 +259,6 @@ impl Ord for Fraction {
         my_numerator_with_same_denominator.cmp(&other_numerator_with_same_denominator)
     }
 }
-#[cfg(feature = "simplify-fraction")]
 impl PartialOrd for Fraction {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -882,5 +838,29 @@ pub mod cluster {
                 len: cluser_len - total_len,
             },
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Fraction;
+
+    fn raw_fraction(n: u64, d: u64) -> Fraction {
+        Fraction {
+            numerator: n,
+            denominator: d,
+        }
+    }
+    #[test]
+    fn fraction_1() {
+        assert_eq!(raw_fraction(8316, 2940).simplify(), Fraction::new(99, 35));
+    }
+    #[test]
+    fn fraction_2() {
+        assert_eq!(raw_fraction(2940, 8316).simplify(), Fraction::new(35, 99));
+    }
+    #[test]
+    fn fraction_3() {
+        assert_eq!(raw_fraction(29, 41).simplify(), Fraction::new(29, 41));
     }
 }
