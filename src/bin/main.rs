@@ -878,7 +878,6 @@ fn main() {
                     let y_max = y_max + range * 0.2;
 
                     let x = (0..num_samples)
-                        .into_iter()
                         .map(|current| (current as f64 / (num_samples - 1) as f64) * range + x_min);
 
                     let line = poloto::build::plot(format!("{model:.*}", p.unwrap_or(2))).line(
@@ -905,7 +904,8 @@ fn main() {
 
                     use hypermelon::elem::Elem;
 
-                    let plotter = poloto::data(poloto::plots!(line, scatter, determination))
+                    let plotter = poloto::frame_build()
+                        .data(poloto::plots!(line, scatter, determination))
                         .build_and_label((
                             config
                                 .get_one::<String>("plot_title")
