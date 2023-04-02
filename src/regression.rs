@@ -3396,7 +3396,6 @@ pub mod binary_search {
                 let mut f = initial_center;
                 Cow::Owned(
                     (0..self.precision.min(61))
-                        .into_iter()
                         .map(|_| {
                             f = f.sqrt();
                             f
@@ -3485,7 +3484,6 @@ pub mod binary_search {
                 let mut f = initial_center;
                 Cow::Owned(
                     (0..self.precision.min(61))
-                        .into_iter()
                         .map(|_| {
                             f = f.sqrt();
                             f
@@ -3923,7 +3921,6 @@ pub mod random_subset_regression {
             }
             let distribution = rand::distributions::Uniform::new(0, x.len());
             let subsets = (0..config.subsets_count)
-                .into_iter()
                 .map(|_| {
                     let mut new_x = Vec::with_capacity(config.subset_length);
                     let mut new_y = Vec::with_capacity(config.subset_length);
