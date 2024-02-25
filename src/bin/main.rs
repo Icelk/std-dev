@@ -902,7 +902,7 @@ fn main() {
                     ))
                     .text();
 
-                    use hypermelon::elem::Elem;
+                    use tagu::elem::{Elem, Raw};
 
                     let plotter = poloto::frame_build()
                         .data(poloto::plots!(line, scatter, determination))
@@ -921,11 +921,11 @@ fn main() {
                             poloto::header()
                                 .with_dim([1100., 500.])
                                 .with_viewbox([1100., 500.])
-                                .append(poloto::render::Theme::dark())
-                                .append(hypermelon::elem::Element::new("style").append(
+                                .dark_theme()
+                                .append(tagu::elem::Element::new("style").append(Raw::new(
                                     ".poloto_legend[y=\"200\"] \
                                     { transform: translate(0, -60px); }",
-                                )),
+                                ))),
                         );
 
                     let data = plotter.render_string().unwrap();
