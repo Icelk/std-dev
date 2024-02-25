@@ -521,7 +521,7 @@ pub mod pivot_fn {
             <[T]>::get(self, idx)
         }
     }
-    //// See todo note under `clusters`.
+    // // See todo note under `clusters`.
     //
     // impl<'a> SliceSubset<f64> for ClusterList<'a> {
     // #[inline]
