@@ -2,7 +2,7 @@
 
 > Your Swiss Army knife for swiftly processing any amount of data. Implemented for industrial and educational purposes alike.
 
-This codebase is well-documented and comments, in an effort to expose the wonderful algorithms of data analysis to the masses.
+This codebase is well-documented and commented, in an effort to expose the wonderful algorithms of data analysis to the masses.
 
 We're ever expanding, but for now the following are implemented.
 
