@@ -2093,28 +2093,6 @@ pub mod theil_sen {
         // See https://stats.stackexchange.com/a/96166
         // for reference.
         let median = {
-            #[derive(Debug, Clone, Copy)]
-            struct CmpFirst<T, V>(T, V);
-            impl<T: PartialEq, V> PartialEq for CmpFirst<T, V> {
-                #[inline]
-                fn eq(&self, other: &Self) -> bool {
-                    self.0.eq(&other.0)
-                }
-            }
-            impl<T: PartialEq + Eq, V> Eq for CmpFirst<T, V> {}
-            impl<T: PartialOrd, V> PartialOrd for CmpFirst<T, V> {
-                #[inline]
-                fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-                    self.0.partial_cmp(&other.0)
-                }
-            }
-            impl<T: Ord, V> Ord for CmpFirst<T, V> {
-                #[inline]
-                fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-                    self.0.cmp(&other.0)
-                }
-            }
-
             let mut values: Vec<_> = predictors.iter().zip(outcomes.iter()).collect();
             match percentile::percentile_default_pivot_by(
                 &mut values,
