@@ -984,7 +984,7 @@ pub mod arbitrary_linear_algebra {
         /// The default precision.
         ///
         /// This is thread-local.
-        pub static DEFAULT_PRECISION: RefCell<u32> = RefCell::new(256);
+        pub static DEFAULT_PRECISION: RefCell<u32> = const { RefCell::new(256) };
     }
     /// Set the default precision **for this thread**.
     pub fn set_default_precision(new: u32) {
@@ -1022,6 +1022,24 @@ pub mod arbitrary_linear_algebra {
             rug::Float::with_val(default_precision(), element).into()
         }
     }
+    impl simba::scalar::SupersetOf<f32> for FloatWrapper {
+        fn is_in_subset(&self) -> bool {
+            self.0.prec() <= 24
+        }
+        fn to_subset(&self) -> Option<f32> {
+            if simba::scalar::SupersetOf::<f32>::is_in_subset(self) {
+                Some(self.0.to_f32())
+            } else {
+                None
+            }
+        }
+        fn to_subset_unchecked(&self) -> f32 {
+            self.0.to_f32()
+        }
+        fn from_subset(element: &f32) -> Self {
+            rug::Float::with_val(default_precision(), element).into()
+        }
+    }
     impl simba::scalar::SubsetOf<Self> for FloatWrapper {
         fn to_superset(&self) -> Self {
             self.clone()
@@ -1052,10 +1070,7 @@ pub mod arbitrary_linear_algebra {
         type Element = FloatWrapper;
         type SimdBool = bool;
 
-        #[inline(always)]
-        fn lanes() -> usize {
-            1
-        }
+        const LANES: usize = 1;
 
         #[inline(always)]
         fn splat(val: Self::Element) -> Self {
