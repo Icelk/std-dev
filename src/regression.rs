@@ -1915,7 +1915,7 @@ pub mod theil_sen {
             vec
         }
     }
-    impl<'a, T: Copy + Debug> Iterator for PermutationIter<'a, T> {
+    impl<T: Copy + Debug> Iterator for PermutationIter<'_, T> {
         type Item = PermutationIterBuffer<T>;
         #[inline]
         fn next(&mut self) -> Option<Self::Item> {
@@ -4017,7 +4017,7 @@ mod utils {
         }
     }
     pub(super) struct BorrowedPolynomial<'a>(pub(super) &'a [f64]);
-    impl<'a> Predictive for BorrowedPolynomial<'a> {
+    impl Predictive for BorrowedPolynomial<'_> {
         #[inline(always)]
         fn predict_outcome(&self, predictor: f64) -> f64 {
             match self.0.len() {
