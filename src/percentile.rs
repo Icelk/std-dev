@@ -579,6 +579,7 @@ pub mod pivot_fn {
             // Next, we sort each chunk. Each group is a fixed length, so each sort
             // takes constant time. Since we have n/5 chunks, this operation
             // is also O(n)
+            #[allow(clippy::manual_inspect)]
             let sorted_chunks = chunks.map(|c| {
                 c.sort_unstable_by(compare);
                 c
@@ -736,14 +737,14 @@ pub mod cluster {
         list: &'a mut [Cluster],
         len: usize,
     }
-    impl<'a> Deref for ClusterMut<'a> {
+    impl Deref for ClusterMut<'_> {
         type Target = [Cluster];
         #[inline]
         fn deref(&self) -> &Self::Target {
             self.list
         }
     }
-    impl<'a> DerefMut for ClusterMut<'a> {
+    impl DerefMut for ClusterMut<'_> {
         #[inline]
         fn deref_mut(&mut self) -> &mut Self::Target {
             self.list
@@ -767,7 +768,7 @@ pub mod cluster {
             }
         }
     }
-    impl<'a> ClusterMut<'a> {
+    impl ClusterMut<'_> {
         #[inline]
         fn list(&self) -> ClusterList {
             ClusterList::from(self)
