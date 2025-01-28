@@ -541,9 +541,9 @@ pub mod pivot_fn {
     #[cfg(feature = "percentile-rand")]
     #[inline]
     pub fn rand<T: Clone, S: SliceSubset<T> + ?Sized>() -> impl FnMut(&mut S) -> Cow<'_, T> {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         move |slice| {
-            let idx = rng.sample(rand::distributions::Uniform::new(0_usize, slice.len()));
+            let idx = rng.random_range(0..slice.len());
             // UNWRAP: it's less than `slice.len`.
             // We assume `!slice.is_empty()`.
             Cow::Borrowed(slice.get(idx).unwrap())
@@ -614,9 +614,9 @@ pub mod cluster {
         #[cfg(feature = "percentile-rand")]
         #[inline]
         pub fn rand() -> impl FnMut(&ClusterList) -> f64 {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             move |slice| {
-                let idx = rng.sample(rand::distributions::Uniform::new(0_usize, slice.len()));
+                let idx = rng.random_range(0..slice.len());
                 // Panic (index call): it's less than `slice.len`.
                 // We assume `!slice.is_empty()`.
                 *slice.index(idx)

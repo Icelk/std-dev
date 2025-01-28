@@ -2313,7 +2313,7 @@ pub mod theil_sen {
             let mut s1 = [0.0; 20];
             let mut s2 = [0.0; 20];
 
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             rng.fill(&mut s1);
             rng.fill(&mut s2);
 
@@ -3495,8 +3495,8 @@ pub mod binary_search {
                 // decrease randomness at the end
                 let progress = 1.0 - iter as f64 / self.iterations as f64;
                 // gen f32 since that takes less bytes
-                let rng_factor =
-                    1. + (2.0 * rng.gen::<f32>() as f64 - 1.) * self.randomness_factor * progress;
+                let rng_factor = 1.
+                    + (2.0 * rng.random::<f32>() as f64 - 1.) * self.randomness_factor * progress;
 
                 // for each variable to optimize
                 for i in 0..n {
@@ -3573,7 +3573,7 @@ pub mod binary_search {
                 impl $name for Options {
                     fn $method(&self, predictors: &[f64], outcomes: &[f64]) -> $ret {
                         use rand::SeedableRng;
-                        let mut rng = rand_xorshift::XorShiftRng::from_rng(rand::thread_rng()).unwrap();
+                        let mut rng = rand_xorshift::XorShiftRng::from_rng(&mut rand::rng());
 
                         #[cfg(feature = "random_subset_regression")]
                         if let Some(random_config) = &self.random_subset_regression {
@@ -3619,7 +3619,7 @@ pub mod binary_search {
                 impl $name for Options {
                     fn $method(&self, predictors: &[f64], outcomes: &[f64], max_frequency: f64) -> $ret {
                         use rand::SeedableRng;
-                        let mut rng = rand_xorshift::XorShiftRng::from_rng(rand::thread_rng()).unwrap();
+                        let mut rng = rand_xorshift::XorShiftRng::from_rng(&mut rand::rng());
 
                         #[cfg(feature = "random_subset_regression")]
                         if let Some(random_config) = &self.random_subset_regression {
@@ -3730,7 +3730,7 @@ pub mod binary_search {
             degree: usize,
         ) -> PolynomialCoefficients {
             use rand::SeedableRng;
-            let mut rng = rand_xorshift::XorShiftRng::from_rng(rand::thread_rng()).unwrap();
+            let mut rng = rand_xorshift::XorShiftRng::from_rng(&mut rand::rng());
 
             #[cfg(feature = "random_subset_regression")]
             if let Some(random_config) = &self.random_subset_regression {
@@ -3793,7 +3793,7 @@ pub mod binary_search {
         #[test]
         #[cfg(feature = "binary_search_rng")]
         fn two_variable_regression() {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             let now = std::time::Instant::now();
             let x = [1.3, 4.7, 9.4];
             let y = [4., 5.3, 6.7];
@@ -3822,7 +3822,7 @@ pub mod binary_search {
         #[cfg(feature = "binary_search_rng")]
         fn second_degree_regression() {
             // init thread rng
-            let _rng = rand::thread_rng();
+            let _rng = rand::rng();
             let now = std::time::Instant::now();
             let x = [1.3, 4.7, 9.4];
             let y = [4., 5.3, 6.7];
@@ -3839,7 +3839,7 @@ pub mod binary_search {
             use rand::SeedableRng;
             // init thread rng
 
-            let mut rng = rand_xorshift::XorShiftRng::from_rng(rand::thread_rng()).unwrap();
+            let mut rng = rand_xorshift::XorShiftRng::from_rng(&mut rand::rng());
             let now = std::time::Instant::now();
             let coeffs = Options::default()
                 .max_precision()
@@ -3912,7 +3912,7 @@ pub mod random_subset_regression {
                 );
                 return None;
             }
-            let distribution = rand::distributions::Uniform::new(0, x.len());
+            let distribution = rand::distr::Uniform::new(0, x.len()).unwrap();
             let subsets = (0..config.subsets_count)
                 .map(|_| {
                     let mut new_x = Vec::with_capacity(config.subset_length);

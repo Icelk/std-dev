@@ -35,7 +35,7 @@ clap = { version = "4.0", optional = true, features = ["cargo"] }
 clap_autocomplete = { version = "0.4", optional = true }
 poloto = { version = "19", optional = true, default-features = false }
 tagu = "0.1.6"
-rand_xorshift = { version = "0.3.0", optional = true }
+rand_xorshift = { version = "0.4.0", optional = true }
 
 [features]
 default = ["bin", "pretty", "completion", "regression", "ols", "percentile-rand", "generic-impls", "binary_search_rng", "random_subset_regression"]
@@ -87,7 +87,7 @@ pretty = ["bin", "atty", "colored"]
 completion = ["clap_autocomplete"]
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 # Build with `--profile production`
 [profile.production]
