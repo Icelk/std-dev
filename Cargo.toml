@@ -30,7 +30,6 @@ approx = { version = "0.5", optional = true, default-features = false }
 rug = { version = "1.15", optional = true }
 
 colored = { version = "3.0", optional = true }
-atty = { version = "0.2.14", optional = true }
 clap = { version = "4.0", optional = true, features = ["cargo"] }
 clap_autocomplete = { version = "0.4", optional = true }
 poloto = { version = "19", optional = true, default-features = false }
@@ -81,7 +80,7 @@ generic-impls = ["num-traits"]
 bin = ["clap", "poloto", "regression", "binary_search_rng", "ols"]
 
 # Prettier bin output
-pretty = ["bin", "atty", "colored"]
+pretty = ["bin", "colored"]
 
 # Shell completion output
 completion = ["clap_autocomplete"]
