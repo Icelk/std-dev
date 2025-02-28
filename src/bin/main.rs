@@ -608,7 +608,7 @@ fn main() {
     );
 
     #[cfg(feature = "pretty")]
-    let tty = atty::is(atty::Stream::Stdin);
+    let tty = std::io::stdin().is_terminal();
     #[cfg(not(feature = "pretty"))]
     let tty = false;
 
