@@ -862,7 +862,7 @@ fn main() {
                         })
                         .unwrap_or(500);
                     if config.get_flag("linear")
-                        || config.get_one::<usize>("degree").map_or(false, |o| *o == 1)
+                        || config.get_one::<usize>("degree").is_some_and(|o| *o == 1)
                     {
                         num_samples = 2;
                     }
