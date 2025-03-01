@@ -3,7 +3,7 @@ name = "std-dev"
 description = "Your Swiss Army knife for swiftly processing any amount of data. Implemented for industrial and educational purposes alike."
 # strip=true in profile below,
 # 1.56 for edition 2021
-rust-version = "1.59"
+rust-version = "1.70"
 version = "0.1.0"
 edition = "2021"
 license = "LGPL-3.0-or-later"
