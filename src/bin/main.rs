@@ -3,7 +3,7 @@ use std::env;
 use std::fmt::{Debug, Display};
 #[cfg(feature = "regression")]
 use std::io::Write;
-use std::io::{stdin, BufRead};
+use std::io::{stdin, BufRead, IsTerminal};
 use std::process::exit;
 use std::str::FromStr;
 use std::time::Instant;
